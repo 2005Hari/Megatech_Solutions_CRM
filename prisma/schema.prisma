@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id             String       @id @default(uuid())
+  name           String
+  contactDetails String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  quotations     Quotation[]
+  customerPOs    CustomerPO[]
+}
+
+model Supplier {
+  id             String       @id @default(uuid())
+  name           String
+  contactDetails String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  supplierPOs    SupplierPO[]
+}
+
+model Quotation {
+  id           String          @id @default(uuid())
+  refNo        String          @unique
+  date         DateTime        @default(now())
+  validUntil   DateTime?
+  status         String          @default("Pending") // Pending, Won, Lost
+  followupDate   DateTime?
+  notes          String?
+  salutation     String?
+  subject        String?
+  includeGst     Boolean         @default(true)
+  gstPct         Float           @default(18)
+  includeFreight Boolean         @default(true)
+  freightAmount  Float           @default(0)
+  terms          String?         // JSON string array of terms
+  customerId     String
+  customer       Customer        @relation(fields: [customerId], references: [id])
+  items          QuotationItem[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  customerPOs    CustomerPO[]
+}
+
+model QuotationItem {
+  id          String    @id @default(uuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  brand       String?
+  productName String
+  qty         Int
+  unit        String?
+  sellPrice   Float
+  estimatedCost Float?
+}
+
+model CustomerPO {
+  id          String           @id @default(uuid())
+  refNo       String           @unique
+  date        DateTime         @default(now())
+  deliveryDate DateTime?
+  status      String           @default("Open") // Open, Fulfilled, Cancelled
+  notes       String?
+  pdfAttached String?
+  quotationId String?
+  quotation   Quotation?       @relation(fields: [quotationId], references: [id])
+  customerId  String
+  customer    Customer         @relation(fields: [customerId], references: [id])
+  items       CustomerPOItem[]
+  supplierPOs SupplierPO[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model CustomerPOItem {
+  id          String     @id @default(uuid())
+  cpoId       String
+  cpo         CustomerPO @relation(fields: [cpoId], references: [id], onDelete: Cascade)
+  productName String
+  qty         Int
+  unit        String?
+  sellPrice   Float
+  estimatedCost Float?
+  spoItems    SupplierPOItem[]
+}
+
+model SupplierPO {
+  id           String           @id @default(uuid())
+  refNo        String           @unique
+  date         DateTime         @default(now())
+  deliveryDate DateTime?
+  status       String           @default("Draft") // Draft, Ready For Review, Sent, Partially Received, Fully Received, Closed
+  notes        String?
+  cpoId        String?
+  cpo          CustomerPO?      @relation(fields: [cpoId], references: [id])
+  supplierId   String?
+  supplier     Supplier?        @relation(fields: [supplierId], references: [id])
+  items        SupplierPOItem[]
+  statusHistory StatusHistory[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model SupplierPOItem {
+  id          String     @id @default(uuid())
+  spoId       String
+  spo         SupplierPO @relation(fields: [spoId], references: [id], onDelete: Cascade)
+  productName String
+  qty         Int
+  unit        String?
+  buyPrice    Float?     // Optional because initially it's a draft without commercials
+  cpoItemId   String?
+  cpoItem     CustomerPOItem? @relation(fields: [cpoItemId], references: [id])
+}
+
+model StatusHistory {
+  id        String     @id @default(uuid())
+  spoId     String
+  spo       SupplierPO @relation(fields: [spoId], references: [id], onDelete: Cascade)
+  status    String
+  createdAt DateTime   @default(now())
+}
