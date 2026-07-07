@@ -392,12 +392,22 @@ export default function QuotationBuilder({
               </div>
             </div>
             
+            <div className="flex justify-between text-[11px] mb-3">
+              <div><b>Subject / Ref:</b> {subject || '—'}</div>
+              <div><b>Quotation No.:</b> {qno || '—'}</div>
+            </div>
+            
+            <div className="text-[12px] text-gray-800 leading-relaxed mb-3">
+              <span>{salutation}</span><br/><br/>
+              Thank you for your valuable enquiry. With reference to your requirement, we are pleased to submit our best quotation for your kind consideration.
+            </div>
+
             <table className="w-full text-[11px] mb-3 border-collapse">
               <thead>
                 <tr>
                   <th className="bg-gray-900 text-white p-2 font-semibold text-left border-b border-gray-200 w-8">Sr.</th>
                   <th className="bg-gray-900 text-white p-2 font-semibold text-left border-b border-gray-200">Description</th>
-                  <th className="bg-gray-900 text-white p-2 font-semibold text-right border-b border-gray-200 w-12">Qty</th>
+                  <th className="bg-gray-900 text-white p-2 font-semibold text-right border-b border-gray-200 w-16">Qty</th>
                   <th className="bg-gray-900 text-white p-2 font-semibold text-right border-b border-gray-200 w-20">Rate (₹)</th>
                   <th className="bg-gray-900 text-white p-2 font-semibold text-right border-b border-gray-200 w-24">Amount (₹)</th>
                 </tr>
@@ -405,11 +415,104 @@ export default function QuotationBuilder({
               <tbody>
                 {sections.map(sec => (
                   <tr key={sec.id}>
-                    <td colSpan={5} className="bg-gray-100 p-2 font-bold">{sec.name}</td>
+                    <td colSpan={5} className="p-0">
+                      <table className="w-full">
+                        <tbody>
+                          <tr>
+                            <td colSpan={5} className="bg-gray-200 p-2 font-bold text-gray-800">{sec.name}</td>
+                          </tr>
+                          {sec.items.map((it: any, idx: number) => (
+                            <tr key={it.id || idx} className="even:bg-gray-50 border-b border-gray-100 last:border-0">
+                              <td className="p-2 w-8 align-top">{idx + 1}</td>
+                              <td className="p-2 whitespace-pre-wrap align-top">
+                                {it.brand ? <span className="font-semibold block">{it.brand}</span> : null}
+                                {it.desc || '—'}
+                              </td>
+                              <td className="p-2 text-right w-16 align-top">{it.qty} {it.unit}</td>
+                              <td className="p-2 text-right w-20 align-top">{formatCurrency(it.rate)}</td>
+                              <td className="p-2 text-right w-24 align-top font-semibold">{formatCurrency(it.qty * it.rate)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
                   </tr>
                 ))}
+                
+                {items.length > 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-0">
+                      <table className="w-full">
+                        <tbody>
+                          {sections.length > 0 && (
+                            <tr>
+                              <td colSpan={5} className="bg-gray-200 p-2 font-bold text-gray-800">Other Items</td>
+                            </tr>
+                          )}
+                          {items.map((it: any, idx: number) => (
+                            <tr key={it.id || idx} className="even:bg-gray-50 border-b border-gray-100 last:border-0">
+                              <td className="p-2 w-8 align-top">{idx + 1}</td>
+                              <td className="p-2 whitespace-pre-wrap align-top">
+                                {it.brand ? <span className="font-semibold block">{it.brand}</span> : null}
+                                {it.desc || '—'}
+                              </td>
+                              <td className="p-2 text-right w-16 align-top">{it.qty} {it.unit}</td>
+                              <td className="p-2 text-right w-20 align-top">{formatCurrency(it.rate)}</td>
+                              <td className="p-2 text-right w-24 align-top font-semibold">{formatCurrency(it.qty * it.rate)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
+
+            <div className="flex justify-end mb-4">
+              <table className="text-[11px] border border-gray-200 rounded min-w-[220px]">
+                <tbody>
+                  <tr><td className="p-1.5 px-3 border-b border-gray-200">Subtotal</td><td className="p-1.5 px-3 border-b border-gray-200 text-right min-w-[110px]">{formatCurrency(subtotal)}</td></tr>
+                  {gstOn && <tr><td className="p-1.5 px-3 border-b border-gray-200">GST ({gstPct}%)</td><td className="p-1.5 px-3 border-b border-gray-200 text-right min-w-[110px]">{formatCurrency(gstAmount)}</td></tr>}
+                  {frOn && <tr><td className="p-1.5 px-3 border-b border-gray-200">Freight</td><td className="p-1.5 px-3 border-b border-gray-200 text-right min-w-[110px]">{formatCurrency(freight)}</td></tr>}
+                  <tr className="bg-gray-900 text-white font-bold text-xs"><td className="p-1.5 px-3">Grand Total</td><td className="p-1.5 px-3 text-right min-w-[110px]">{formatCurrency(grandTotal)}</td></tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="text-[12px] text-gray-800 leading-relaxed mb-3">
+              We look forward to receiving your valuable Purchase Order and the opportunity to serve your organization.
+            </div>
+            
+            {tcs.length > 0 && (
+              <div className="bg-gray-50 border-l-[3px] border-red-600 p-3 rounded-r text-[10.5px] leading-loose mb-3 text-gray-800">
+                <b className="text-red-600 text-[11px]">Terms & Conditions:</b><br/>
+                <div className="mt-1">
+                  {tcs.map((tc, i) => (
+                    <div key={tc.id}><b>{i + 1}. {tc.label}:</b> {tc.value}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="text-[12px] text-gray-800 leading-relaxed mb-3">
+              Thanking you and assuring you of our best attention and services at all times.
+            </div>
+            
+            <div className="flex justify-between pt-3 border-t border-gray-200 text-[11px] leading-relaxed">
+              <div>
+                <b className="text-red-600 text-[12px]">For Megatech Solutions</b><br/><br/>
+                <br/>_________________________<br/>
+                <b>Jatin Pachal</b><br/>Director<br/>
+                <span className="text-gray-400 text-[10px]">Stamp & Signature</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="border-t-[1.5px] border-gray-300 p-2.5 px-11 text-center text-[9.5px] text-gray-500 leading-relaxed bg-gray-50">
+            Regd. Office : 603, Shriram Complex, Near Nehru Statue, Sakri Road, Dhule 424 001. &nbsp;Tel. 02562-357620<br/>
+            Mumbai Office : 15, Raja House, M.K.Amin Marg, Behind Central Camera, Fort, Mumbai 400 001. &nbsp;Tel.: 022-22702211<br/>
+            email: jatin@megatechsolutions.co.in &nbsp;|&nbsp; Website: www.megatechsolutions.co.in &nbsp;|&nbsp; Cell: 9423191703, 9423191706
           </div>
         </div>
       </div>
