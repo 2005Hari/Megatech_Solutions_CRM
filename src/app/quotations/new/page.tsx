@@ -2,10 +2,6 @@ import { prisma } from "@/lib/prisma"
 import QuotationBuilder from "./QuotationBuilder"
 
 export default async function NewQuotationPage() {
-  const customers = await prisma.customer.findMany({
-    orderBy: { name: 'asc' }
-  })
-
   // We hardcode products list for now as per the HTML prototype since there is no Product table.
   const PRODUCTS = [
     { brand: 'CP Plus', desc: '2MP Dome Camera (CP-UNC-DA21L3)', rate: 1200 },
@@ -23,7 +19,7 @@ export default async function NewQuotationPage() {
 
   return (
     <div className="p-8">
-      <QuotationBuilder customers={customers} products={PRODUCTS} />
+      <QuotationBuilder products={PRODUCTS} />
     </div>
   )
 }

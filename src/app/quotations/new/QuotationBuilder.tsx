@@ -7,21 +7,17 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { Save, Eye, Download, User, FileText, List, Trash2, PlusCircle, ClipboardCheck, ChevronUp, ChevronDown } from "lucide-react"
 
 export default function QuotationBuilder({ 
-  customers, 
   products,
   initialQuotation
 }: { 
-  customers: any[]
   products: any[]
   initialQuotation?: any
 }) {
   const router = useRouter()
   
   // State Initialization from initialQuotation
-  const initialCust = initialQuotation ? customers.find(c => c.id === initialQuotation.customerId) : null
-  const initialAddress = initialCust ? (initialCust.name + "\n" + (initialCust.contactDetails || "")) : ""
+  const initialAddress = initialQuotation?.customerAddress || ""
 
-  const [selectedCustomerId, setSelectedCustomerId] = useState(initialQuotation?.customerId || "")
   const [customerAddress, setCustomerAddress] = useState(initialQuotation ? initialAddress : "")
   const [salutation, setSalutation] = useState(initialQuotation?.salutation || "Dear Sir / Madam,")
   const [subject, setSubject] = useState(initialQuotation?.subject || "")
@@ -80,16 +76,6 @@ export default function QuotationBuilder({
   const grandTotal = subtotal + gstAmount + frAmount
 
   // Handlers
-  const handleCustomerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value
-    setSelectedCustomerId(id)
-    const cust = customers.find(c => c.id === id)
-    if (cust) {
-      setCustomerAddress(cust.name + "\n" + (cust.contactDetails || ""))
-    } else {
-      setCustomerAddress("")
-    }
-  }
 
   const handleProductSelect = (id: any, desc: string) => {
     const prod = products.find(p => p.desc === desc)
@@ -103,13 +89,12 @@ export default function QuotationBuilder({
   }
 
   const handleSave = async () => {
-    if (!selectedCustomerId) return alert("Please select a customer.")
     if (!qno) return alert("Quotation number required.")
     
     setSaving(true)
     try {
       const payload = {
-        customerId: selectedCustomerId,
+        customerId: "",
         refNo: qno,
         date,
         validUntil: validUntil || undefined,
@@ -215,13 +200,6 @@ export default function QuotationBuilder({
           </div>
           
           <div className="space-y-4">
-            <div>
-              <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1.5">Select Customer Profile</label>
-              <select value={selectedCustomerId} onChange={handleCustomerChange} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-foreground outline-none">
-                <option value="">-- Custom / Manual Entry --</option>
-                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
             <div>
               <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1.5">To (Party / Company Name)</label>
               <textarea value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} rows={4} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-foreground outline-none resize-y" placeholder="e.g. ABC Pvt. Ltd." />

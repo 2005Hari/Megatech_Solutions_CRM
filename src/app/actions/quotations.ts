@@ -50,7 +50,7 @@ export async function uploadCustomerPO(quotationId: string, cpoRefNo: string, cp
 }
 
 export async function createQuotation(data: {
-  customerId: string
+  customerId?: string
   refNo: string
   date: string
   validUntil?: string
@@ -65,7 +65,7 @@ export async function createQuotation(data: {
 }) {
   const quotation = await prisma.quotation.create({
     data: {
-      customerId: data.customerId,
+      customerId: data.customerId || null,
       refNo: data.refNo,
       date: new Date(data.date),
       validUntil: data.validUntil ? new Date(data.validUntil) : null,
@@ -97,7 +97,7 @@ export async function createQuotation(data: {
 export async function updateQuotation(
   id: string,
   data: {
-    customerId: string
+    customerId?: string
     refNo: string
     date: string
     validUntil?: string
@@ -117,7 +117,7 @@ export async function updateQuotation(
     await tx.quotation.update({
       where: { id },
       data: {
-        customerId: data.customerId,
+        customerId: data.customerId || null,
         refNo: data.refNo,
         date: new Date(data.date),
         validUntil: data.validUntil ? new Date(data.validUntil) : null,

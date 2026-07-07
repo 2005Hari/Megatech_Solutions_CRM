@@ -10,7 +10,7 @@ interface PendingQuotation {
   refNo: string
   customer: {
     name: string
-  }
+  } | null
 }
 
 export default function UploadCPOFromQuotationsModal({ pendingQuotations }: { pendingQuotations: PendingQuotation[] }) {
@@ -73,7 +73,7 @@ export default function UploadCPOFromQuotationsModal({ pendingQuotations }: { pe
                   <option value="">-- Select Quotation --</option>
                   {pendingQuotations.map(q => (
                     <option key={q.id} value={q.id}>
-                      {q.refNo} ({q.customer.name})
+                      {q.refNo} ({q.customer?.name || "Manual Entry"})
                     </option>
                   ))}
                 </select>
@@ -81,7 +81,7 @@ export default function UploadCPOFromQuotationsModal({ pendingQuotations }: { pe
 
               {selectedQuotation && (
                 <div className="bg-accent/10 border border-accent/20 text-accent p-3 rounded-lg text-xs">
-                  Linking CPO to quotation <strong className="font-semibold">{selectedQuotation.refNo}</strong> for <strong className="font-semibold">{selectedQuotation.customer.name}</strong>.
+                  Linking CPO to quotation <strong className="font-semibold">{selectedQuotation.refNo}</strong> for <strong className="font-semibold">{selectedQuotation.customer?.name || "Manual Entry"}</strong>.
                 </div>
               )}
 

@@ -32,10 +32,6 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
     redirect(`/quotations/${quotation.id}`)
   }
 
-  const customers = await prisma.customer.findMany({
-    orderBy: { name: "asc" }
-  })
-
   // We hardcode products list just like in new/page.tsx
   const PRODUCTS = [
     { brand: 'CP Plus', desc: '2MP Dome Camera (CP-UNC-DA21L3)', rate: 1200 },
@@ -69,7 +65,6 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
       </div>
 
       <QuotationBuilder 
-        customers={customers} 
         products={PRODUCTS} 
         initialQuotation={quotation} 
       />

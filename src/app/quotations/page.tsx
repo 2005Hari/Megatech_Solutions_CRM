@@ -61,7 +61,7 @@ export default async function QuotationsPage() {
                 return (
                   <TableRow key={q.id}>
                     <TableCell className="font-mono font-medium">{q.refNo}</TableCell>
-                    <TableCell className="font-medium">{q.customer.name}</TableCell>
+                    <TableCell className="font-medium">{q.customer?.name || "Manual Entry"}</TableCell>
                     <TableCell className="text-muted-foreground">{formatDate(q.date)}</TableCell>
                     <TableCell className="text-muted-foreground">{q.validUntil ? formatDate(q.validUntil) : '—'}</TableCell>
                     <TableCell className="text-right font-bold text-foreground">{formatCurrency(total)}</TableCell>
@@ -80,7 +80,7 @@ export default async function QuotationsPage() {
                           <Button variant="ghost" size="sm" className="h-8">View</Button>
                         </Link>
                         {(q.status === 'Pending' || q.status === 'Won') && (
-                          <UploadCPOModal quotationId={q.id} quotationRef={q.refNo} customerName={q.customer.name} />
+                          <UploadCPOModal quotationId={q.id} quotationRef={q.refNo} customerName={q.customer?.name || "Manual Entry"} />
                         )}
                       </div>
                     </TableCell>

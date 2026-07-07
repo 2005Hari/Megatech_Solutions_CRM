@@ -62,7 +62,7 @@ export default async function CustomerPOsPage() {
                     <TableCell className="font-mono font-medium text-accent">
                       <Link href={`/cpo/${cpo.id}`}>{cpo.refNo}</Link>
                     </TableCell>
-                    <TableCell className="font-medium text-foreground">{cpo.customer.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{cpo.customer?.name || "Manual Entry"}</TableCell>
                     <TableCell className="text-muted-foreground">{formatDate(cpo.date)}</TableCell>
                     <TableCell className="text-right font-bold text-foreground">{formatCurrency(total)}</TableCell>
                     <TableCell>

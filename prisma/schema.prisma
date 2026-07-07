@@ -42,8 +42,8 @@ model Quotation {
   includeFreight Boolean         @default(true)
   freightAmount  Float           @default(0)
   terms          String?         // JSON string array of terms
-  customerId     String
-  customer       Customer        @relation(fields: [customerId], references: [id])
+  customerId     String?
+  customer       Customer?       @relation(fields: [customerId], references: [id])
   items          QuotationItem[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -72,8 +72,8 @@ model CustomerPO {
   pdfAttached String?
   quotationId String?
   quotation   Quotation?       @relation(fields: [quotationId], references: [id])
-  customerId  String
-  customer    Customer         @relation(fields: [customerId], references: [id])
+  customerId  String?
+  customer    Customer?        @relation(fields: [customerId], references: [id])
   items       CustomerPOItem[]
   supplierPOs SupplierPO[]
   createdAt   DateTime         @default(now())

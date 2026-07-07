@@ -38,7 +38,7 @@ export default async function CustomerPODetails({ params }: { params: Promise<{ 
       <div className="flex justify-between items-start mb-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">{cpo.refNo}</h1>
-          <p className="text-muted-foreground mt-1 font-medium">{cpo.customer.name}</p>
+          <p className="text-muted-foreground mt-1 font-medium">{cpo.customer?.name || "Manual Entry"}</p>
         </div>
         <div className="flex gap-3">
           {spo && <Link href={`/spo/${spo.id}`} className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground border border-card-border rounded-lg text-sm font-semibold transition-colors">View Supplier PO</Link>}

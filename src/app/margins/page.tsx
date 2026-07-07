@@ -82,7 +82,7 @@ export default async function MarginsPage() {
                   <td className="px-5 py-4 font-mono font-medium text-blue-600">
                     <Link href={`/cpo/${r.cpo.id}`}>{r.cpo.refNo}</Link>
                   </td>
-                  <td className="px-5 py-4 font-medium text-gray-800">{r.cpo.customer.name}</td>
+                  <td className="px-5 py-4 font-medium text-gray-800">{r.cpo.customer?.name || "Manual Entry"}</td>
                   <td className="px-5 py-4 text-right">{formatCurrency(r.rev)}</td>
                   <td className="px-5 py-4 text-right">{r.cost !== null ? formatCurrency(r.cost) : <span className="bg-gray-100 text-gray-500 px-2 py-1 rounded text-xs">No SPO</span>}</td>
                   <td className={`px-5 py-4 text-right font-bold ${r.profit !== null && r.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>

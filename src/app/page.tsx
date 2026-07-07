@@ -82,7 +82,7 @@ export default async function Dashboard() {
     reference: cpo.refNo,
     status: cpo.status,
     date: cpo.date.toLocaleDateString(),
-    user: cpo.customer.name
+    user: cpo.customer?.name || "Manual Entry"
   }));
 
   return (
