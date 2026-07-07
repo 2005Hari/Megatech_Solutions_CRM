@@ -104,46 +104,59 @@ export async function createQuotation(data: QuotationPayload) {
       includeFreight: data.includeFreight,
       freightAmount: data.freightAmount,
       terms: data.terms,
-      sections: {
-        create: data.sections.map(sec => ({
-          name: sec.name,
-          order: sec.order,
-          items: {
-            create: sec.items.map(i => ({
-              type: i.type,
-              order: i.order,
-              brand: i.brand,
-              productName: i.productName,
-              qty: i.qty,
-              unit: i.unit,
-              sellPrice: i.sellPrice,
-              estimatedCost: i.estimatedCost,
-              laborCost: i.laborCost,
-              materialCost: i.materialCost,
-              transportCost: i.transportCost,
-              otherCost: i.otherCost
-            }))
-          }
-        }))
-      },
-      items: {
-        create: data.items.map(i => ({
-          type: i.type,
-          order: i.order,
-          brand: i.brand,
-          productName: i.productName,
-          qty: i.qty,
-          unit: i.unit,
-          sellPrice: i.sellPrice,
-          estimatedCost: i.estimatedCost,
-          laborCost: i.laborCost,
-          materialCost: i.materialCost,
-          transportCost: i.transportCost,
-          otherCost: i.otherCost
-        }))
-      }
     }
   })
+
+  for (const sec of data.sections) {
+    await prisma.quotationSection.create({
+      data: {
+        quotationId: quotation.id,
+        name: sec.name,
+        order: sec.order,
+        items: {
+          create: sec.items.map(i => ({
+            quotationId: quotation.id,
+            type: i.type,
+            order: i.order,
+            brand: i.brand,
+            productName: i.productName,
+            qty: i.qty,
+            unit: i.unit,
+            sellPrice: i.sellPrice,
+            estimatedCost: i.estimatedCost,
+            laborCost: i.laborCost,
+            materialCost: i.materialCost,
+            transportCost: i.transportCost,
+            otherCost: i.otherCost
+          }))
+        }
+      }
+    })
+  }
+
+  if (data.items.length > 0) {
+    await prisma.quotation.update({
+      where: { id: quotation.id },
+      data: {
+        items: {
+          create: data.items.map(i => ({
+            type: i.type,
+            order: i.order,
+            brand: i.brand,
+            productName: i.productName,
+            qty: i.qty,
+            unit: i.unit,
+            sellPrice: i.sellPrice,
+            estimatedCost: i.estimatedCost,
+            laborCost: i.laborCost,
+            materialCost: i.materialCost,
+            transportCost: i.transportCost,
+            otherCost: i.otherCost
+          }))
+        }
+      }
+    })
+  }
 
   revalidatePath("/quotations")
   return quotation
@@ -171,8 +184,6 @@ export async function updateQuotation(id: string, data: QuotationPayload) {
       }
     })
 
-    // To cleanly sync sections and items, we delete all existing sections and items and recreate them.
-    // In a real app we might want to do upserts to preserve IDs for other relationships, but items here don't have downstream references until converted to PO.
     await tx.quotationSection.deleteMany({ where: { quotationId: id } })
     await tx.quotationItem.deleteMany({ where: { quotationId: id } })
 
@@ -184,6 +195,7 @@ export async function updateQuotation(id: string, data: QuotationPayload) {
           order: sec.order,
           items: {
             create: sec.items.map(i => ({
+              quotationId: id,
               type: i.type,
               order: i.order,
               brand: i.brand,
@@ -243,7 +255,6 @@ export async function createQuotationRevision(id: string) {
 
   if (!original) throw new Error("Original quotation not found")
 
-  // Mark original as Revised
   await prisma.quotation.update({
     where: { id },
     data: { status: "Revised" }
@@ -254,7 +265,6 @@ export async function createQuotationRevision(id: string) {
     ? original.refNo.replace(/ Rev-\d+$/, ` Rev-${newRevisionNumber}`) 
     : `${original.refNo} Rev-${newRevisionNumber}`
 
-  // Create new revision
   const newQuotation = await prisma.quotation.create({
     data: {
       customerId: original.customerId,
@@ -272,46 +282,59 @@ export async function createQuotationRevision(id: string) {
       includeFreight: original.includeFreight,
       freightAmount: original.freightAmount,
       terms: original.terms,
-      sections: {
-        create: original.sections.map(sec => ({
-          name: sec.name,
-          order: sec.order,
-          items: {
-            create: sec.items.map(i => ({
-              type: i.type,
-              order: i.order,
-              brand: i.brand,
-              productName: i.productName,
-              qty: i.qty,
-              unit: i.unit,
-              sellPrice: i.sellPrice,
-              estimatedCost: i.estimatedCost,
-              laborCost: i.laborCost,
-              materialCost: i.materialCost,
-              transportCost: i.transportCost,
-              otherCost: i.otherCost
-            }))
-          }
-        }))
-      },
-      items: {
-        create: original.items.map(i => ({
-          type: i.type,
-          order: i.order,
-          brand: i.brand,
-          productName: i.productName,
-          qty: i.qty,
-          unit: i.unit,
-          sellPrice: i.sellPrice,
-          estimatedCost: i.estimatedCost,
-          laborCost: i.laborCost,
-          materialCost: i.materialCost,
-          transportCost: i.transportCost,
-          otherCost: i.otherCost
-        }))
-      }
     }
   })
+
+  for (const sec of original.sections) {
+    await prisma.quotationSection.create({
+      data: {
+        quotationId: newQuotation.id,
+        name: sec.name,
+        order: sec.order,
+        items: {
+          create: sec.items.map(i => ({
+            quotationId: newQuotation.id,
+            type: i.type,
+            order: i.order,
+            brand: i.brand,
+            productName: i.productName,
+            qty: i.qty,
+            unit: i.unit,
+            sellPrice: i.sellPrice,
+            estimatedCost: i.estimatedCost,
+            laborCost: i.laborCost,
+            materialCost: i.materialCost,
+            transportCost: i.transportCost,
+            otherCost: i.otherCost
+          }))
+        }
+      }
+    })
+  }
+
+  if (original.items.length > 0) {
+    await prisma.quotation.update({
+      where: { id: newQuotation.id },
+      data: {
+        items: {
+          create: original.items.map(i => ({
+            type: i.type,
+            order: i.order,
+            brand: i.brand,
+            productName: i.productName,
+            qty: i.qty,
+            unit: i.unit,
+            sellPrice: i.sellPrice,
+            estimatedCost: i.estimatedCost,
+            laborCost: i.laborCost,
+            materialCost: i.materialCost,
+            transportCost: i.transportCost,
+            otherCost: i.otherCost
+          }))
+        }
+      }
+    })
+  }
 
   revalidatePath("/quotations")
   return newQuotation
