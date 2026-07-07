@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import CpoTabs from "./tabs";
+import DeleteCPOButton from "../DeleteCPOButton";
 
 export default async function CustomerPODetails({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -42,6 +43,7 @@ export default async function CustomerPODetails({ params }: { params: Promise<{ 
         </div>
         <div className="flex gap-3">
           {spo && <Link href={`/spo/${spo.id}`} className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground border border-card-border rounded-lg text-sm font-semibold transition-colors">View Supplier PO</Link>}
+          <DeleteCPOButton cpoId={cpo.id} refNo={cpo.refNo} redirectTo="/cpo" className="px-4 py-2 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer" showText={true} />
         </div>
       </div>
 

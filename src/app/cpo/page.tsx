@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import UploadCPOFromQuotationsModal from "./upload-cpo-modal";
+import DeleteCPOButton from "./DeleteCPOButton";
 import { Button } from "@/components/ui/Button";
 import {
   Table,
@@ -84,9 +85,12 @@ export default async function CustomerPOsPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Link href={`/cpo/${cpo.id}`}>
-                        <Button variant="ghost" size="sm" className="h-8">View Details</Button>
-                      </Link>
+                      <div className="flex items-center justify-center gap-2">
+                        <Link href={`/cpo/${cpo.id}`}>
+                          <Button variant="ghost" size="sm" className="h-8">View Details</Button>
+                        </Link>
+                        <DeleteCPOButton cpoId={cpo.id} refNo={cpo.refNo} />
+                      </div>
                     </TableCell>
                   </TableRow>
                 )

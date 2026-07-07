@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { autoGenerateSPODraftFromCPO } from "./cpo"
+import { QuotationType, ItemType } from "@prisma/client"
 
 export async function uploadCustomerPO(quotationId: string, cpoRefNo: string, cpoDate: string, pdfFileName: string) {
   const quotation = await prisma.quotation.findUnique({
@@ -12,13 +13,11 @@ export async function uploadCustomerPO(quotationId: string, cpoRefNo: string, cp
 
   if (!quotation) throw new Error("Quotation not found")
 
-  // Update quotation status
   await prisma.quotation.update({
     where: { id: quotationId },
     data: { status: "Won" }
   })
 
-  // Create Customer PO
   const cpo = await prisma.customerPO.create({
     data: {
       refNo: cpoRefNo,
@@ -38,7 +37,6 @@ export async function uploadCustomerPO(quotationId: string, cpoRefNo: string, cp
     }
   })
 
-  // Auto Generate Supplier PO Draft
   await autoGenerateSPODraftFromCPO(cpo.id)
 
   revalidatePath("/")
@@ -49,71 +47,111 @@ export async function uploadCustomerPO(quotationId: string, cpoRefNo: string, cp
   return cpo
 }
 
-export async function createQuotation(data: {
+export type QuotationItemPayload = {
+  id?: string
+  type: ItemType
+  brand: string
+  productName: string
+  qty: number
+  unit: string
+  sellPrice: number
+  estimatedCost?: number
+  laborCost?: number
+  materialCost?: number
+  transportCost?: number
+  otherCost?: number
+  order: number
+}
+
+export type QuotationSectionPayload = {
+  id?: string
+  name: string
+  order: number
+  items: QuotationItemPayload[]
+}
+
+export type QuotationPayload = {
   customerId?: string
   refNo: string
   date: string
   validUntil?: string
   salutation: string
   subject: string
+  type: QuotationType
+  status?: string
   includeGst: boolean
   gstPct: number
   includeFreight: boolean
   freightAmount: number
   terms: string
-  items: { brand: string, productName: string, qty: number, unit: string, sellPrice: number }[]
-}) {
+  sections: QuotationSectionPayload[]
+  items: QuotationItemPayload[] // Items not in any section
+}
+
+export async function createQuotation(data: QuotationPayload) {
   const quotation = await prisma.quotation.create({
     data: {
       customerId: data.customerId || null,
       refNo: data.refNo,
       date: new Date(data.date),
       validUntil: data.validUntil ? new Date(data.validUntil) : null,
-      status: "Pending",
+      status: data.status || "Draft",
       salutation: data.salutation,
       subject: data.subject,
+      type: data.type,
       includeGst: data.includeGst,
       gstPct: data.gstPct,
       includeFreight: data.includeFreight,
       freightAmount: data.freightAmount,
       terms: data.terms,
+      sections: {
+        create: data.sections.map(sec => ({
+          name: sec.name,
+          order: sec.order,
+          items: {
+            create: sec.items.map(i => ({
+              type: i.type,
+              order: i.order,
+              brand: i.brand,
+              productName: i.productName,
+              qty: i.qty,
+              unit: i.unit,
+              sellPrice: i.sellPrice,
+              estimatedCost: i.estimatedCost,
+              laborCost: i.laborCost,
+              materialCost: i.materialCost,
+              transportCost: i.transportCost,
+              otherCost: i.otherCost
+            }))
+          }
+        }))
+      },
       items: {
         create: data.items.map(i => ({
+          type: i.type,
+          order: i.order,
           brand: i.brand,
           productName: i.productName,
           qty: i.qty,
           unit: i.unit,
-          sellPrice: i.sellPrice
+          sellPrice: i.sellPrice,
+          estimatedCost: i.estimatedCost,
+          laborCost: i.laborCost,
+          materialCost: i.materialCost,
+          transportCost: i.transportCost,
+          otherCost: i.otherCost
         }))
       }
     }
   })
 
   revalidatePath("/quotations")
-  
   return quotation
 }
 
-export async function updateQuotation(
-  id: string,
-  data: {
-    customerId?: string
-    refNo: string
-    date: string
-    validUntil?: string
-    salutation: string
-    subject: string
-    includeGst: boolean
-    gstPct: number
-    includeFreight: boolean
-    freightAmount: number
-    terms: string
-    items: { id?: string; brand: string; productName: string; qty: number; unit: string; sellPrice: number }[]
-  }
-) {
-  // Use transaction to ensure consistency
+export async function updateQuotation(id: string, data: QuotationPayload) {
   await prisma.$transaction(async (tx) => {
-    // 1. Update main fields
+    // Update main fields
     await tx.quotation.update({
       where: { id },
       data: {
@@ -123,6 +161,8 @@ export async function updateQuotation(
         validUntil: data.validUntil ? new Date(data.validUntil) : null,
         salutation: data.salutation,
         subject: data.subject,
+        type: data.type,
+        status: data.status,
         includeGst: data.includeGst,
         gstPct: data.gstPct,
         includeFreight: data.includeFreight,
@@ -131,57 +171,150 @@ export async function updateQuotation(
       }
     })
 
-    // 2. Sync items
-    const existingDbItems = await tx.quotationItem.findMany({
-      where: { quotationId: id },
-      select: { id: true }
-    })
+    // To cleanly sync sections and items, we delete all existing sections and items and recreate them.
+    // In a real app we might want to do upserts to preserve IDs for other relationships, but items here don't have downstream references until converted to PO.
+    await tx.quotationSection.deleteMany({ where: { quotationId: id } })
+    await tx.quotationItem.deleteMany({ where: { quotationId: id } })
 
-    const activeItemIds = data.items.map(i => i.id).filter(Boolean) as string[]
-    const itemsToDelete = existingDbItems.filter(dbItem => !activeItemIds.includes(dbItem.id))
-
-    // Delete removed items
-    if (itemsToDelete.length > 0) {
-      await tx.quotationItem.deleteMany({
-        where: {
-          id: {
-            in: itemsToDelete.map(i => i.id)
+    for (const sec of data.sections) {
+      await tx.quotationSection.create({
+        data: {
+          quotationId: id,
+          name: sec.name,
+          order: sec.order,
+          items: {
+            create: sec.items.map(i => ({
+              type: i.type,
+              order: i.order,
+              brand: i.brand,
+              productName: i.productName,
+              qty: i.qty,
+              unit: i.unit,
+              sellPrice: i.sellPrice,
+              estimatedCost: i.estimatedCost,
+              laborCost: i.laborCost,
+              materialCost: i.materialCost,
+              transportCost: i.transportCost,
+              otherCost: i.otherCost
+            }))
           }
         }
       })
     }
 
-    // Update or Create current items
-    for (const item of data.items) {
-      if (item.id) {
-        await tx.quotationItem.update({
-          where: { id: item.id },
-          data: {
-            brand: item.brand,
-            productName: item.productName,
-            qty: item.qty,
-            unit: item.unit,
-            sellPrice: item.sellPrice
+    if (data.items.length > 0) {
+      await tx.quotation.update({
+        where: { id },
+        data: {
+          items: {
+            create: data.items.map(i => ({
+              type: i.type,
+              order: i.order,
+              brand: i.brand,
+              productName: i.productName,
+              qty: i.qty,
+              unit: i.unit,
+              sellPrice: i.sellPrice,
+              estimatedCost: i.estimatedCost,
+              laborCost: i.laborCost,
+              materialCost: i.materialCost,
+              transportCost: i.transportCost,
+              otherCost: i.otherCost
+            }))
           }
-        })
-      } else {
-        await tx.quotationItem.create({
-          data: {
-            quotationId: id,
-            brand: item.brand,
-            productName: item.productName,
-            qty: item.qty,
-            unit: item.unit,
-            sellPrice: item.sellPrice
-          }
-        })
-      }
+        }
+      })
     }
   })
 
   revalidatePath("/quotations")
   revalidatePath(`/quotations/${id}`)
   revalidatePath("/")
+}
+
+export async function createQuotationRevision(id: string) {
+  const original = await prisma.quotation.findUnique({
+    where: { id },
+    include: {
+      sections: { include: { items: true } },
+      items: { where: { sectionId: null } }
+    }
+  })
+
+  if (!original) throw new Error("Original quotation not found")
+
+  // Mark original as Revised
+  await prisma.quotation.update({
+    where: { id },
+    data: { status: "Revised" }
+  })
+
+  const newRevisionNumber = original.revision + 1
+  const newRefNo = original.refNo.includes(" Rev-") 
+    ? original.refNo.replace(/ Rev-\d+$/, ` Rev-${newRevisionNumber}`) 
+    : `${original.refNo} Rev-${newRevisionNumber}`
+
+  // Create new revision
+  const newQuotation = await prisma.quotation.create({
+    data: {
+      customerId: original.customerId,
+      refNo: newRefNo,
+      date: new Date(),
+      validUntil: original.validUntil,
+      status: "Draft",
+      salutation: original.salutation,
+      subject: original.subject,
+      type: original.type,
+      revision: newRevisionNumber,
+      parentQuotationId: original.parentQuotationId || original.id,
+      includeGst: original.includeGst,
+      gstPct: original.gstPct,
+      includeFreight: original.includeFreight,
+      freightAmount: original.freightAmount,
+      terms: original.terms,
+      sections: {
+        create: original.sections.map(sec => ({
+          name: sec.name,
+          order: sec.order,
+          items: {
+            create: sec.items.map(i => ({
+              type: i.type,
+              order: i.order,
+              brand: i.brand,
+              productName: i.productName,
+              qty: i.qty,
+              unit: i.unit,
+              sellPrice: i.sellPrice,
+              estimatedCost: i.estimatedCost,
+              laborCost: i.laborCost,
+              materialCost: i.materialCost,
+              transportCost: i.transportCost,
+              otherCost: i.otherCost
+            }))
+          }
+        }))
+      },
+      items: {
+        create: original.items.map(i => ({
+          type: i.type,
+          order: i.order,
+          brand: i.brand,
+          productName: i.productName,
+          qty: i.qty,
+          unit: i.unit,
+          sellPrice: i.sellPrice,
+          estimatedCost: i.estimatedCost,
+          laborCost: i.laborCost,
+          materialCost: i.materialCost,
+          transportCost: i.transportCost,
+          otherCost: i.otherCost
+        }))
+      }
+    }
+  })
+
+  revalidatePath("/quotations")
+  return newQuotation
 }
 
 export async function deleteQuotation(id: string) {

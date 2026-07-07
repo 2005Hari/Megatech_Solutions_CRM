@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { revalidatePath } from "next/cache"
 
 export async function autoGenerateSPODraftFromCPO(cpoId: string) {
   const cpo = await prisma.customerPO.findUnique({
@@ -37,4 +38,13 @@ export async function autoGenerateSPODraftFromCPO(cpoId: string) {
   })
 
   return spo
+}
+
+export async function deleteCPO(id: string) {
+  await prisma.customerPO.delete({
+    where: { id }
+  })
+
+  revalidatePath("/cpo")
+  revalidatePath("/")
 }

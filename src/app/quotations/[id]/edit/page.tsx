@@ -9,7 +9,16 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
   const quotation = await prisma.quotation.findUnique({
     where: { id },
     include: {
-      items: true,
+      sections: {
+        include: {
+          items: { orderBy: { order: 'asc' } }
+        },
+        orderBy: { order: 'asc' }
+      },
+      items: {
+        where: { sectionId: null },
+        orderBy: { order: 'asc' }
+      },
       customer: true
     }
   })
@@ -27,8 +36,8 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
     )
   }
 
-  // Lock Policy: Redirect if not Pending
-  if (quotation.status !== "Pending") {
+  // Lock Policy: Redirect if not Pending or Draft
+  if (quotation.status !== "Pending" && quotation.status !== "Draft") {
     redirect(`/quotations/${quotation.id}`)
   }
 
@@ -46,6 +55,9 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
     { brand: 'TP-Link', desc: 'Archer C6 Gigabit Router', rate: 2200 },
     { brand: 'TP-Link', desc: '16-Port Switch (TL-SG1016D)', rate: 3500 }
   ]
+
+  const services = await prisma.service.findMany({ where: { active: true } })
+  const units = await prisma.unit.findMany({ where: { active: true } })
 
   return (
     <div className="p-8">
@@ -66,6 +78,8 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
 
       <QuotationBuilder 
         products={PRODUCTS} 
+        services={services}
+        units={units}
         initialQuotation={quotation} 
       />
     </div>

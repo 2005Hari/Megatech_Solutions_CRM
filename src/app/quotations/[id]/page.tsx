@@ -8,7 +8,18 @@ export default async function QuotationDetailsPage({ params }: { params: Promise
   const quotation = await prisma.quotation.findUnique({
     where: { id },
     include: {
-      items: true,
+      sections: {
+        include: {
+          items: {
+            orderBy: { order: 'asc' }
+          }
+        },
+        orderBy: { order: 'asc' }
+      },
+      items: {
+        where: { sectionId: null },
+        orderBy: { order: 'asc' }
+      },
       customer: true
     }
   })

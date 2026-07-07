@@ -17,9 +17,12 @@ export default async function NewQuotationPage() {
     { brand: 'TP-Link', desc: '16-Port Switch (TL-SG1016D)', rate: 3500 }
   ];
 
+  const services = await prisma.service.findMany({ where: { active: true } });
+  const units = await prisma.unit.findMany({ where: { active: true } });
+
   return (
     <div className="p-8">
-      <QuotationBuilder products={PRODUCTS} />
+      <QuotationBuilder products={PRODUCTS} services={services} units={units} />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import DeleteSPOButton from "./DeleteSPOButton";
 import { Button } from "@/components/ui/Button";
 import {
   Table,
@@ -71,9 +72,12 @@ export default async function SupplierPOsPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Link href={`/spo/${spo.id}`}>
-                        <Button variant="ghost" size="sm" className="h-8">View & Manage</Button>
-                      </Link>
+                      <div className="flex items-center justify-center gap-2">
+                        <Link href={`/spo/${spo.id}`}>
+                          <Button variant="ghost" size="sm" className="h-8">View & Manage</Button>
+                        </Link>
+                        <DeleteSPOButton spoId={spo.id} refNo={spo.refNo} />
+                      </div>
                     </TableCell>
                   </TableRow>
                 )

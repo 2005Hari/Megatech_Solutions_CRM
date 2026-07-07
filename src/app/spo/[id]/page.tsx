@@ -3,6 +3,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { Printer, Edit, CheckCircle2, ArrowLeftRight, ClipboardCheck, Lock } from "lucide-react";
 import { transitionSPOStatus } from "@/app/actions/spo";
+import DeleteSPOButton from "../DeleteSPOButton";
 
 export default async function SupplierPODetails({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -124,6 +125,7 @@ export default async function SupplierPODetails({ params }: { params: Promise<{ 
           <Link href={`/print/spo/${spo.id}`} target="_blank" className="px-4 py-2 bg-card border border-card-border hover:bg-muted text-foreground rounded-lg text-sm font-semibold inline-flex items-center gap-2 transition-colors">
             <Printer size={16} /> Print Document
           </Link>
+          <DeleteSPOButton spoId={spo.id} refNo={spo.refNo} redirectTo="/spo" className="px-4 py-2 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer" showText={true} />
         </div>
       </div>
 

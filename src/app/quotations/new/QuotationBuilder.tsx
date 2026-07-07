@@ -1,43 +1,50 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { createQuotation, updateQuotation } from "@/app/actions/quotations"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { Save, Eye, Download, User, FileText, List, Trash2, PlusCircle, ClipboardCheck, ChevronUp, ChevronDown } from "lucide-react"
+import { Save, Eye, Download, User, FileText, List, Trash2, PlusCircle, ClipboardCheck, ChevronUp, ChevronDown, Plus } from "lucide-react"
 
 export default function QuotationBuilder({ 
   products,
+  services = [],
+  units = [],
   initialQuotation
 }: { 
   products: any[]
+  services?: any[]
+  units?: any[]
   initialQuotation?: any
 }) {
   const router = useRouter()
   
-  // State Initialization from initialQuotation
-  const initialAddress = initialQuotation?.customerAddress || ""
-
-  const [customerAddress, setCustomerAddress] = useState(initialQuotation ? initialAddress : "")
+  // State Initialization
+  const [customerAddress, setCustomerAddress] = useState(initialQuotation?.customerAddress || "")
   const [salutation, setSalutation] = useState(initialQuotation?.salutation || "Dear Sir / Madam,")
   const [subject, setSubject] = useState(initialQuotation?.subject || "")
   const [qno, setQno] = useState(initialQuotation?.refNo || `MTS-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 999)).padStart(3, '0')}`)
   const [date, setDate] = useState(initialQuotation?.date ? new Date(initialQuotation.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0])
   const [validUntil, setValidUntil] = useState(initialQuotation?.validUntil ? new Date(initialQuotation.validUntil).toISOString().split("T")[0] : "")
+  const [quotationType, setQuotationType] = useState<"PRODUCT"|"SERVICE"|"MIXED">(initialQuotation?.type || "PRODUCT")
   
-  const [items, setItems] = useState<{id: any, brand: string, desc: string, qty: number, rate: number, estCost: number}[]>(
-    initialQuotation?.items.map((i: any) => ({
-      id: i.id,
-      brand: i.brand || "",
-      desc: i.productName,
-      qty: i.qty,
-      rate: i.sellPrice,
-      estCost: i.estimatedCost || 0
+  // State for items that are NOT in any section
+  const [items, setItems] = useState<any[]>(
+    initialQuotation?.items?.filter((i: any) => !i.sectionId).map((i: any) => ({
+      ...i, desc: i.productName, rate: i.sellPrice, estCost: i.estimatedCost || 0
     })) || [
-      { id: 1, brand: "", desc: "", qty: 1, rate: 0, estCost: 0 }
+      { id: '1', type: "PRODUCT", brand: "", desc: "", qty: 1, rate: 0, estCost: 0, laborCost: 0, materialCost: 0, transportCost: 0, otherCost: 0, order: 0 }
     ]
   )
-  const [nextItemId, setNextItemId] = useState(initialQuotation ? 999 : 2)
+  
+  const [sections, setSections] = useState<any[]>(
+    initialQuotation?.sections?.map((s: any) => ({
+      ...s,
+      items: s.items.map((i: any) => ({
+        ...i, desc: i.productName, rate: i.sellPrice, estCost: i.estimatedCost || 0
+      }))
+    })) || []
+  )
   
   const [gstOn, setGstOn] = useState(initialQuotation ? initialQuotation.includeGst : true)
   const [gstPct, setGstPct] = useState(initialQuotation?.gstPct || 18)
@@ -46,11 +53,7 @@ export default function QuotationBuilder({
 
   const [tcs, setTcs] = useState<{id: any, label: string, value: string}[]>(() => {
     if (initialQuotation?.terms) {
-      try {
-        return JSON.parse(initialQuotation.terms)
-      } catch (e) {
-        console.error(e)
-      }
+      try { return JSON.parse(initialQuotation.terms) } catch (e) {}
     }
     return [
       { id: 1, label: 'GST', value: 'Inclusive / Extra as applicable' },
@@ -70,22 +73,30 @@ export default function QuotationBuilder({
   const previewRef = useRef<HTMLDivElement>(null)
 
   // Calcs
-  const subtotal = items.reduce((sum, item) => sum + (item.qty * item.rate), 0)
+  const getAllItems = () => {
+    let all: any[] = [...items];
+    sections.forEach(s => all = all.concat(s.items));
+    return all;
+  }
+  
+  const allItems = getAllItems();
+  const subtotal = allItems.reduce((sum, item) => sum + (item.qty * (item.rate || 0)), 0)
   const gstAmount = gstOn ? subtotal * (gstPct / 100) : 0
   const frAmount = frOn ? freight : 0
   const grandTotal = subtotal + gstAmount + frAmount
 
   // Handlers
-
-  const handleProductSelect = (id: any, desc: string) => {
+  const handleItemSelect = (desc: string, itemObj: any, setItemState: (i: any) => void) => {
     const prod = products.find(p => p.desc === desc)
-    setItems(items.map(item => {
-      if (item.id === id) {
-        if (prod) return { ...item, desc: prod.desc, brand: prod.brand, rate: prod.rate }
-        return { ...item, desc }
-      }
-      return item
-    }))
+    const serv = services.find(s => s.name === desc)
+    
+    if (prod) {
+      setItemState({ ...itemObj, type: 'PRODUCT', desc: prod.desc, brand: prod.brand, rate: prod.rate })
+    } else if (serv) {
+      setItemState({ ...itemObj, type: 'SERVICE', desc: serv.name + (serv.description ? '\n' + serv.description : ''), rate: serv.defaultRate, unit: serv.defaultUnit })
+    } else {
+      setItemState({ ...itemObj, desc })
+    }
   }
 
   const handleSave = async () => {
@@ -94,34 +105,61 @@ export default function QuotationBuilder({
     setSaving(true)
     try {
       const payload = {
-        customerId: "",
+        customerId: initialQuotation?.customerId || undefined,
         refNo: qno,
         date,
         validUntil: validUntil || undefined,
         salutation,
         subject,
+        type: quotationType,
         includeGst: gstOn,
         gstPct,
         includeFreight: frOn,
         freightAmount: frAmount,
         terms: JSON.stringify(tcs),
-        items: items.filter(i => i.desc).map(i => ({
-          id: typeof i.id === "string" ? i.id : undefined, // Include DB ID if present
-          brand: i.brand,
+        items: items.filter(i => i.desc).map((i, idx) => ({
+          id: typeof i.id === "string" ? i.id : undefined,
+          type: i.type,
+          brand: i.brand || "",
           productName: i.desc,
           qty: i.qty,
-          unit: "nos",
+          unit: i.unit || "Nos",
           sellPrice: i.rate,
-          estimatedCost: i.estCost
+          estimatedCost: i.estCost || 0,
+          laborCost: i.laborCost || 0,
+          materialCost: i.materialCost || 0,
+          transportCost: i.transportCost || 0,
+          otherCost: i.otherCost || 0,
+          order: idx
+        })),
+        sections: sections.map((s, sIdx) => ({
+          id: typeof s.id === "string" ? s.id : undefined,
+          name: s.name,
+          order: sIdx,
+          items: s.items.filter((i:any) => i.desc).map((i:any, idx:number) => ({
+            id: typeof i.id === "string" ? i.id : undefined,
+            type: i.type,
+            brand: i.brand || "",
+            productName: i.desc,
+            qty: i.qty,
+            unit: i.unit || "Nos",
+            sellPrice: i.rate,
+            estimatedCost: i.estCost || 0,
+            laborCost: i.laborCost || 0,
+            materialCost: i.materialCost || 0,
+            transportCost: i.transportCost || 0,
+            otherCost: i.otherCost || 0,
+            order: idx
+          }))
         }))
       }
 
       if (initialQuotation) {
-        await updateQuotation(initialQuotation.id, payload)
+        await updateQuotation(initialQuotation.id, payload as any)
         alert("Quotation updated successfully!")
         router.push(`/quotations/${initialQuotation.id}`)
       } else {
-        await createQuotation(payload)
+        await createQuotation(payload as any)
         alert("Saved successfully!")
         router.push("/quotations")
       }
@@ -136,24 +174,16 @@ export default function QuotationBuilder({
     try {
       const { jsPDF } = await import("jspdf")
       const html2canvas = (await import("html2canvas")).default
-
       if (!previewRef.current) return
       
       const prevDisplay = previewRef.current.style.display
       previewRef.current.style.display = "block"
 
-      const canvas = await html2canvas(previewRef.current, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff"
-      })
-      
+      const canvas = await html2canvas(previewRef.current, { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff" })
       previewRef.current.style.display = prevDisplay
 
       const imgData = canvas.toDataURL('image/png')
       const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' })
-      
       const imgProps = pdf.getImageProperties(imgData)
       const pdfWidth = pdf.internal.pageSize.getWidth()
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width
@@ -161,34 +191,92 @@ export default function QuotationBuilder({
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
       pdf.save(`Megatech_${qno.replace(/\//g, '-')}.pdf`)
     } catch (e) {
-      console.error(e)
-      alert("Failed to generate PDF. Make sure jspdf and html2canvas are installed.")
+      alert("Failed to generate PDF.")
     }
   }
 
+  const renderItemTable = (targetItems: any[], setTargetItems: (newItems: any[]) => void, hideHeader = false) => (
+    <div className="w-full">
+      <table className="w-full text-sm text-left border-collapse">
+        {!hideHeader && <thead>
+          <tr className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-card-border">
+            <th className="p-2 w-10 text-center">Sr.</th>
+            <th className="p-2 w-24">Type</th>
+            <th className="p-2">Description</th>
+            <th className="p-2 w-16 text-right">Qty</th>
+            <th className="p-2 w-20">Unit</th>
+            <th className="p-2 w-24 text-right">Rate</th>
+            <th className="p-2 w-24 text-right">Amount</th>
+            <th className="p-2 w-10"></th>
+          </tr>
+        </thead>}
+        <tbody>
+          {targetItems.map((it, idx) => (
+            <tr key={it.id || idx} className="border-b border-card-border last:border-0 hover:bg-muted/30">
+              <td className="p-2 text-center text-xs font-bold text-muted-foreground">{idx + 1}</td>
+              <td className="p-2">
+                <select value={it.type} onChange={e => setTargetItems(targetItems.map(i => i.id === it.id ? { ...i, type: e.target.value } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-xs outline-none">
+                  <option value="PRODUCT">Product</option>
+                  <option value="SERVICE">Service</option>
+                </select>
+              </td>
+              <td className="p-2">
+                <div className="flex flex-col gap-1">
+                  {it.type === 'PRODUCT' && <input value={it.brand || ""} onChange={e => setTargetItems(targetItems.map(i => i.id === it.id ? { ...i, brand: e.target.value } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-xs outline-none" placeholder="Brand" />}
+                  <textarea value={it.desc} onChange={e => handleItemSelect(e.target.value, it, (newItem) => setTargetItems(targetItems.map(i => i.id === it.id ? newItem : i)))} rows={2} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm outline-none resize-y" placeholder="Product / Service Description" />
+                </div>
+              </td>
+              <td className="p-2"><input type="number" min={0} value={it.qty} onChange={e => setTargetItems(targetItems.map(i => i.id === it.id ? { ...i, qty: parseFloat(e.target.value)||0 } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm text-right outline-none" /></td>
+              <td className="p-2">
+                <input list="dl_units" value={it.unit || ""} onChange={e => setTargetItems(targetItems.map(i => i.id === it.id ? { ...i, unit: e.target.value } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm outline-none" placeholder="Nos" />
+              </td>
+              <td className="p-2"><input type="number" min={0} value={it.rate} onChange={e => setTargetItems(targetItems.map(i => i.id === it.id ? { ...i, rate: parseFloat(e.target.value)||0 } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm text-right outline-none" /></td>
+              <td className="p-2 text-right font-bold text-foreground">{formatCurrency(it.qty * it.rate)}</td>
+              <td className="p-2 text-center">
+                <button onClick={() => setTargetItems(targetItems.filter(i => i.id !== it.id))} className="text-muted-foreground hover:text-rose-500 p-1 rounded hover:bg-rose-50"><Trash2 size={16} /></button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="p-2">
+        <button onClick={() => setTargetItems([...targetItems, { id: Math.random().toString(), type: quotationType === "SERVICE" ? "SERVICE" : "PRODUCT", brand: "", desc: "", qty: 1, rate: 0, estCost: 0, order: targetItems.length }])} className="text-xs font-bold text-accent hover:underline flex items-center gap-1"><Plus size={12}/> Add Item</button>
+      </div>
+    </div>
+  )
+
   return (
     <div className="max-w-5xl mx-auto pb-20">
-      <datalist id="dl_products">
-        {products.map(p => <option key={p.desc} value={p.desc} />)}
+      <datalist id="dl_units">
+        {units.map(u => <option key={u.id} value={u.name} />)}
       </datalist>
 
       {/* Topbar */}
       <div className="bg-card border border-card-border rounded-xl p-4 flex justify-between items-center mb-6 shadow-sm">
         <div>
           <div className="font-serif text-accent text-xl font-black tracking-tight leading-none">Megatech Solutions</div>
-          <div className="text-muted-foreground text-xs mt-1 tracking-wider">Quotation Builder · Your Premier IT Partner</div>
+          <div className="text-muted-foreground text-xs mt-1 tracking-wider">Universal Quotation Engine</div>
         </div>
         <div className="flex gap-2">
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 border border-card-border rounded-lg text-sm font-semibold flex items-center gap-2 hover:bg-muted text-foreground transition-colors">
+          <button onClick={handleSave} disabled={saving} className="px-4 py-2 border border-card-border rounded-lg text-sm font-semibold flex items-center gap-2 hover:bg-muted transition-colors">
             <Save size={16} /> {saving ? "Saving..." : "Save"}
           </button>
-          <button onClick={() => setShowPreview(!showPreview)} className="px-4 py-2 border border-card-border rounded-lg text-sm font-semibold flex items-center gap-2 hover:bg-muted text-foreground transition-colors">
+          <button onClick={() => setShowPreview(!showPreview)} className="px-4 py-2 border border-card-border rounded-lg text-sm font-semibold flex items-center gap-2 hover:bg-muted transition-colors">
             <Eye size={16} /> {showPreview ? "Hide Preview" : "Preview"}
           </button>
           <button onClick={handleDownloadPDF} className="px-4 py-2 bg-accent text-accent-foreground rounded-lg text-sm font-semibold flex items-center gap-2 hover:bg-accent/90 transition-colors">
             <Download size={16} /> Download PDF
           </button>
         </div>
+      </div>
+
+      <div className="bg-card border border-card-border rounded-xl p-4 mb-4 flex gap-4 items-center">
+        <span className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Quotation Type:</span>
+        <select value={quotationType} onChange={e => setQuotationType(e.target.value as any)} className="border border-card-border bg-transparent text-foreground rounded p-2 text-sm font-bold">
+          <option value="PRODUCT">Product Supply</option>
+          <option value="SERVICE">Service / Installation</option>
+          <option value="MIXED">Mixed (Products + Services)</option>
+        </select>
       </div>
 
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -198,24 +286,23 @@ export default function QuotationBuilder({
             <div className="w-8 h-8 bg-muted border border-card-border rounded-lg flex items-center justify-center text-foreground/70"><User size={16} /></div>
             <div className="text-xs font-bold text-foreground uppercase tracking-widest">Party Details</div>
           </div>
-          
           <div className="space-y-4">
             <div>
               <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1.5">To (Party / Company Name)</label>
-              <textarea value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} rows={4} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-foreground outline-none resize-y" placeholder="e.g. ABC Pvt. Ltd." />
+              <textarea value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} rows={4} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm outline-none resize-y" placeholder="e.g. ABC Pvt. Ltd." />
             </div>
             <div>
               <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1.5">Salutation</label>
-              <input value={salutation} onChange={e => setSalutation(e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-foreground outline-none" />
+              <input value={salutation} onChange={e => setSalutation(e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1.5">Subject / Reference</label>
-                <input value={subject} onChange={e => setSubject(e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-foreground outline-none" placeholder="Ref. or subject" />
+                <input value={subject} onChange={e => setSubject(e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm outline-none" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1.5">Quotation No.</label>
-                <input value={qno} onChange={e => setQno(e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-foreground outline-none" />
+                <input value={qno} onChange={e => setQno(e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm outline-none" />
               </div>
             </div>
           </div>
@@ -231,11 +318,11 @@ export default function QuotationBuilder({
           <div className="grid grid-cols-2 gap-3 mb-6">
             <div>
               <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1.5">Date</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-foreground outline-none" />
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm outline-none" />
             </div>
             <div>
               <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1.5">Valid Until</label>
-              <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-foreground outline-none" />
+              <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm outline-none" />
             </div>
           </div>
 
@@ -244,29 +331,10 @@ export default function QuotationBuilder({
               <span className="font-semibold text-muted-foreground">Subtotal</span>
               <span className="font-bold text-foreground">{formatCurrency(subtotal)}</span>
             </div>
-
             <div className="p-3 bg-muted/50 border-b border-card-border flex gap-3">
-              <label className={`flex items-center gap-2 text-xs font-bold cursor-pointer rounded-full px-3 py-1.5 border transition-colors ${gstOn ? 'bg-accent text-accent-foreground border-accent' : 'bg-transparent border-card-border text-muted-foreground'}`}>
-                <input type="checkbox" checked={gstOn} onChange={e => setGstOn(e.target.checked)} className="accent-foreground" /> Include GST
-              </label>
-              <label className={`flex items-center gap-2 text-xs font-bold cursor-pointer rounded-full px-3 py-1.5 border transition-colors ${frOn ? 'bg-accent text-accent-foreground border-accent' : 'bg-transparent border-card-border text-muted-foreground'}`}>
-                <input type="checkbox" checked={frOn} onChange={e => setFrOn(e.target.checked)} className="accent-foreground" /> Include Freight
-              </label>
+              <label className="flex items-center gap-2 text-xs font-bold cursor-pointer rounded-full px-3 py-1.5 border transition-colors bg-accent text-accent-foreground border-accent"><input type="checkbox" checked={gstOn} onChange={e => setGstOn(e.target.checked)} className="accent-foreground" /> Include GST</label>
+              <label className="flex items-center gap-2 text-xs font-bold cursor-pointer rounded-full px-3 py-1.5 border transition-colors bg-accent text-accent-foreground border-accent"><input type="checkbox" checked={frOn} onChange={e => setFrOn(e.target.checked)} className="accent-foreground" /> Include Freight</label>
             </div>
-
-            <div className={`flex justify-between items-center p-3 text-sm border-b border-card-border bg-card ${!gstOn && 'opacity-40 pointer-events-none'}`}>
-              <span className="font-semibold text-muted-foreground">GST %</span>
-              <input type="number" value={gstPct} onChange={e => setGstPct(parseFloat(e.target.value))} className="w-20 border border-card-border bg-transparent text-foreground rounded text-right px-2 py-1 outline-none focus:ring-1 focus:ring-foreground" />
-            </div>
-            <div className={`flex justify-between items-center p-3 text-sm border-b border-card-border bg-card ${!gstOn && 'opacity-40 pointer-events-none'}`}>
-              <span className="font-semibold text-muted-foreground">GST Amount</span>
-              <span className="font-bold text-foreground">{formatCurrency(gstAmount)}</span>
-            </div>
-            <div className={`flex justify-between items-center p-3 text-sm border-b border-card-border bg-card ${!frOn && 'opacity-40 pointer-events-none'}`}>
-              <span className="font-semibold text-muted-foreground">Freight (₹)</span>
-              <input type="number" value={freight} onChange={e => setFreight(parseFloat(e.target.value))} className="w-24 border border-card-border bg-transparent text-foreground rounded text-right px-2 py-1 outline-none focus:ring-1 focus:ring-foreground" />
-            </div>
-            
             <div className="flex justify-between items-center p-4 text-base bg-accent text-accent-foreground font-bold">
               <span>Grand Total</span>
               <span className="text-lg">{formatCurrency(grandTotal)}</span>
@@ -275,88 +343,28 @@ export default function QuotationBuilder({
         </div>
       </div>
 
-      {/* Line Items */}
+      {/* Sections and Items */}
       <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm mb-4">
-        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-card-border">
-          <div className="w-8 h-8 bg-muted border border-card-border rounded-lg flex items-center justify-center text-foreground/70"><List size={16} /></div>
-          <div className="text-xs font-bold text-foreground uppercase tracking-widest">Line Items</div>
-        </div>
-
-        <table className="w-full text-sm text-left border-collapse">
-          <thead>
-            <tr className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-card-border">
-              <th className="p-3 w-10 text-center">Sr.</th>
-              <th className="p-3 w-[15%]">Brand</th>
-              <th className="p-3">Product Description</th>
-              <th className="p-3 w-20 text-right">Qty</th>
-              <th className="p-3 w-28 text-right">Est. Cost (₹)</th>
-              <th className="p-3 w-28 text-right">Rate (₹)</th>
-              <th className="p-3 w-28 text-right">Amount (₹)</th>
-              <th className="p-3 w-24 text-center">Margin</th>
-              <th className="p-3 w-10"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, idx) => {
-              const marginAmt = (it.rate - it.estCost) * it.qty;
-              const marginPct = it.rate > 0 ? ((it.rate - it.estCost) / it.rate) * 100 : 0;
-              return (
-              <tr key={it.id} className="border-b border-card-border last:border-0 hover:bg-muted/30">
-                <td className="p-2 text-center text-xs font-bold text-muted-foreground">{idx + 1}</td>
-                <td className="p-2"><input value={it.brand} onChange={e => setItems(items.map(i => i.id === it.id ? { ...i, brand: e.target.value } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm outline-none focus:ring-1 focus:ring-foreground" placeholder="Brand" /></td>
-                <td className="p-2"><input list="dl_products" value={it.desc} onChange={e => handleProductSelect(it.id, e.target.value)} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm outline-none focus:ring-1 focus:ring-foreground" placeholder="Product description" /></td>
-                <td className="p-2"><input type="number" min={0} value={it.qty} onChange={e => setItems(items.map(i => i.id === it.id ? { ...i, qty: parseFloat(e.target.value)||0 } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm text-right outline-none focus:ring-1 focus:ring-foreground" /></td>
-                <td className="p-2"><input type="number" min={0} value={it.estCost} onChange={e => setItems(items.map(i => i.id === it.id ? { ...i, estCost: parseFloat(e.target.value)||0 } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm text-right outline-none focus:ring-1 focus:ring-foreground" placeholder="Est Cost" /></td>
-                <td className="p-2"><input type="number" min={0} value={it.rate} onChange={e => setItems(items.map(i => i.id === it.id ? { ...i, rate: parseFloat(e.target.value)||0 } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm text-right outline-none focus:ring-1 focus:ring-foreground" /></td>
-                <td className="p-2 text-right font-bold text-foreground">{formatCurrency(it.qty * it.rate)}</td>
-                <td className="p-2 text-center">
-                  <div className={`text-xs font-bold ${marginPct > 15 ? 'text-emerald-500' : marginPct > 0 ? 'text-amber-500' : 'text-rose-500'}`}>
-                    {marginPct.toFixed(1)}%
-                  </div>
-                </td>
-                <td className="p-2 text-center">
-                  <button onClick={() => setItems(items.filter(i => i.id !== it.id))} className="text-muted-foreground hover:text-rose-500 p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-500/10"><Trash2 size={16} /></button>
-                </td>
-              </tr>
-            )})}
-          </tbody>
-        </table>
-        <button onClick={() => { setItems([...items, { id: nextItemId, brand: "", desc: "", qty: 1, rate: 0, estCost: 0 }]); setNextItemId(nextItemId + 1) }} className="mt-4 w-full py-3 border border-dashed border-card-border rounded-xl text-muted-foreground font-semibold text-sm hover:border-accent hover:text-foreground hover:bg-muted/50 flex items-center justify-center gap-2 transition-colors">
-          <PlusCircle size={18} /> Add line item
-        </button>
-      </div>
-
-      {/* Terms & Conditions */}
-      <div className="bg-card border border-card-border rounded-xl p-5 shadow-sm mb-4">
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-card-border">
+        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-card-border justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-muted border border-card-border rounded-lg flex items-center justify-center text-foreground/70"><ClipboardCheck size={16} /></div>
-            <div className="text-xs font-bold text-foreground uppercase tracking-widest">Terms & Conditions</div>
+            <div className="w-8 h-8 bg-muted border border-card-border rounded-lg flex items-center justify-center"><List size={16} /></div>
+            <div className="text-xs font-bold uppercase tracking-widest">Line Items</div>
           </div>
-          <div className="text-[10px] text-muted-foreground">Click to edit · Use arrows to reorder</div>
+          <button onClick={() => setSections([...sections, { id: Math.random().toString(), name: "New Section", items: [] }])} className="text-xs font-bold text-accent bg-accent/10 px-3 py-1.5 rounded-full">+ Add Section</button>
         </div>
 
-        <ul className="space-y-2 mb-4">
-          {tcs.map((tc, idx) => (
-            <li key={tc.id} className="flex items-center gap-2 p-2 border border-card-border rounded-lg bg-muted/30 hover:border-accent/20 transition-colors">
-              <div className="w-6 h-6 flex-shrink-0 bg-background border border-card-border rounded-full flex items-center justify-center text-[10px] font-bold text-muted-foreground">{idx + 1}</div>
-              <input value={tc.label} onChange={e => setTcs(tcs.map(t => t.id === tc.id ? { ...t, label: e.target.value } : t))} className="w-32 flex-shrink-0 border border-card-border rounded p-1.5 text-xs font-bold text-foreground outline-none focus:ring-1 focus:ring-foreground bg-background" placeholder="Label" />
-              <input value={tc.value} onChange={e => setTcs(tcs.map(t => t.id === tc.id ? { ...t, value: e.target.value } : t))} className="flex-1 border border-card-border rounded p-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-foreground bg-background" placeholder="Term value..." />
-              <div className="flex gap-1 flex-shrink-0">
-                <button onClick={() => { if(idx>0) { const newTcs = [...tcs]; [newTcs[idx-1], newTcs[idx]] = [newTcs[idx], newTcs[idx-1]]; setTcs(newTcs); } }} className={`p-1 rounded text-muted-foreground hover:bg-muted hover:text-foreground ${idx===0 && 'opacity-30 pointer-events-none'}`}><ChevronUp size={16} /></button>
-                <button onClick={() => { if(idx<tcs.length-1) { const newTcs = [...tcs]; [newTcs[idx+1], newTcs[idx]] = [newTcs[idx], newTcs[idx+1]]; setTcs(newTcs); } }} className={`p-1 rounded text-muted-foreground hover:bg-muted hover:text-foreground ${idx===tcs.length-1 && 'opacity-30 pointer-events-none'}`}><ChevronDown size={16} /></button>
-                <button onClick={() => setTcs(tcs.filter(t => t.id !== tc.id))} className="p-1 rounded text-muted-foreground hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-500/10"><Trash2 size={16} /></button>
+        <div className="space-y-6">
+          {sections.map((sec, sIdx) => (
+            <div key={sec.id} className="border border-card-border rounded-lg overflow-hidden">
+              <div className="bg-muted/50 p-2 flex justify-between items-center border-b border-card-border">
+                <input value={sec.name} onChange={e => setSections(sections.map(s => s.id === sec.id ? { ...s, name: e.target.value } : s))} className="font-bold text-sm bg-transparent outline-none w-1/2 px-2" placeholder="Section Name" />
+                <button onClick={() => setSections(sections.filter(s => s.id !== sec.id))} className="text-rose-500 hover:bg-rose-50 p-1 rounded"><Trash2 size={14}/></button>
               </div>
-            </li>
+              {renderItemTable(sec.items, (newItems) => setSections(sections.map(s => s.id === sec.id ? { ...s, items: newItems } : s)))}
+            </div>
           ))}
-        </ul>
 
-        <div className="flex items-center gap-2 pt-2 border-t border-card-border">
-          <input value={newTcLabel} onChange={e => setNewTcLabel(e.target.value)} className="w-[164px] border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm outline-none focus:ring-1 focus:ring-foreground" placeholder="Label (e.g. Warranty)" />
-          <input value={newTcValue} onChange={e => setNewTcValue(e.target.value)} onKeyDown={e => { if(e.key === 'Enter') { if(newTcValue) { setTcs([...tcs, {id: nextTcId, label: newTcLabel || 'Term', value: newTcValue}]); setNextTcId(nextTcId+1); setNewTcLabel(""); setNewTcValue(""); } } }} className="flex-1 border border-card-border bg-transparent text-foreground rounded-lg p-2.5 text-sm outline-none focus:ring-1 focus:ring-foreground" placeholder="Term value..." />
-          <button onClick={() => { if(newTcValue) { setTcs([...tcs, {id: nextTcId, label: newTcLabel || 'Term', value: newTcValue}]); setNextTcId(nextTcId+1); setNewTcLabel(""); setNewTcValue(""); } }} className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold rounded-lg px-4 py-2.5 text-sm flex items-center gap-2">
-            <PlusCircle size={16} /> Add Term
-          </button>
+          {renderItemTable(items, setItems, sections.length > 0)}
         </div>
       </div>
 
@@ -384,92 +392,27 @@ export default function QuotationBuilder({
               </div>
             </div>
             
-            <div className="flex justify-between text-[11px] mb-3">
-              <div><b>Subject / Ref:</b> {subject || '—'}</div>
-              <div><b>Quotation No.:</b> {qno || '—'}</div>
-            </div>
-            
-            <div className="text-[12px] text-gray-800 leading-relaxed mb-3">
-              <span>{salutation}</span><br/><br/>
-              Thank you for your valuable enquiry. With reference to your requirement, we are pleased to submit our best quotation for your kind consideration.
-            </div>
-            
             <table className="w-full text-[11px] mb-3 border-collapse">
               <thead>
                 <tr>
                   <th className="bg-gray-900 text-white p-2 font-semibold text-left border-b border-gray-200 w-8">Sr.</th>
-                  <th className="bg-gray-900 text-white p-2 font-semibold text-left border-b border-gray-200 w-[18%]">Brand / Company</th>
-                  <th className="bg-gray-900 text-white p-2 font-semibold text-left border-b border-gray-200">Product Description</th>
+                  <th className="bg-gray-900 text-white p-2 font-semibold text-left border-b border-gray-200">Description</th>
                   <th className="bg-gray-900 text-white p-2 font-semibold text-right border-b border-gray-200 w-12">Qty</th>
                   <th className="bg-gray-900 text-white p-2 font-semibold text-right border-b border-gray-200 w-20">Rate (₹)</th>
                   <th className="bg-gray-900 text-white p-2 font-semibold text-right border-b border-gray-200 w-24">Amount (₹)</th>
                 </tr>
               </thead>
               <tbody>
-                {items.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center p-4 text-gray-400">No items added</td></tr>
-                ) : items.map((it, idx) => (
-                  <tr key={it.id} className="even:bg-gray-50">
-                    <td className="p-2 border-b border-gray-100">{idx + 1}</td>
-                    <td className="p-2 border-b border-gray-100">{it.brand || '—'}</td>
-                    <td className="p-2 border-b border-gray-100">{it.desc || '—'}</td>
-                    <td className="p-2 border-b border-gray-100 text-right">{it.qty}</td>
-                    <td className="p-2 border-b border-gray-100 text-right">{formatCurrency(it.rate)}</td>
-                    <td className="p-2 border-b border-gray-100 text-right">{formatCurrency(it.qty * it.rate)}</td>
+                {sections.map(sec => (
+                  <tr key={sec.id}>
+                    <td colSpan={5} className="bg-gray-100 p-2 font-bold">{sec.name}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            
-            <div className="flex justify-end mb-4">
-              <table className="text-[11px] border border-gray-200 rounded min-w-[220px]">
-                <tbody>
-                  <tr><td className="p-1.5 px-3 border-b border-gray-200">Subtotal</td><td className="p-1.5 px-3 border-b border-gray-200 text-right min-w-[110px]">{formatCurrency(subtotal)}</td></tr>
-                  {gstOn && <tr><td className="p-1.5 px-3 border-b border-gray-200">GST ({gstPct}%)</td><td className="p-1.5 px-3 border-b border-gray-200 text-right min-w-[110px]">{formatCurrency(gstAmount)}</td></tr>}
-                  {frOn && <tr><td className="p-1.5 px-3 border-b border-gray-200">Freight</td><td className="p-1.5 px-3 border-b border-gray-200 text-right min-w-[110px]">{formatCurrency(freight)}</td></tr>}
-                  <tr className="bg-gray-900 text-white font-bold text-xs"><td className="p-1.5 px-3">Grand Total</td><td className="p-1.5 px-3 text-right min-w-[110px]">{formatCurrency(grandTotal)}</td></tr>
-                </tbody>
-              </table>
-            </div>
-            
-            <div className="text-[12px] text-gray-800 leading-relaxed mb-3">
-              We look forward to receiving your valuable Purchase Order and the opportunity to serve your organization.
-            </div>
-            
-            <div className="bg-gray-50 border-l-[3px] border-red-600 p-3 rounded-r text-[10.5px] leading-loose mb-3 text-gray-800">
-              <b className="text-red-600 text-[11px]">Terms & Conditions:</b><br/>
-              <div className="mt-1">
-                {tcs.map((tc, i) => (
-                  <div key={tc.id}><b>{i + 1}. {tc.label}:</b> {tc.value}</div>
-                ))}
-              </div>
-            </div>
-            
-            <div className="text-[12px] text-gray-800 leading-relaxed mb-3">
-              Thanking you and assuring you of our best attention and services at all times.
-            </div>
-            
-            <div className="flex justify-between pt-3 border-t border-gray-200 text-[11px] leading-relaxed">
-              <div>
-                <b className="text-red-600 text-[12px]">For Megatech Solutions</b><br/><br/>
-                <br/>_________________________<br/>
-                <b>Jatin Pachal</b><br/>Director<br/>
-                <span className="text-gray-400 text-[10px]">Stamp & Signature</span>
-              </div>
-              <div></div>
-            </div>
-            
           </div>
-          
-          <div className="border-t-[1.5px] border-gray-300 p-2.5 px-11 text-center text-[9.5px] text-gray-500 leading-relaxed bg-gray-50">
-            Regd. Office : 603, Shriram Complex, Near Nehru Statue, Sakri Road, Dhule 424 001. &nbsp;Tel. 02562-357620<br/>
-            Mumbai Office : 15, Raja House, M.K.Amin Marg, Behind Central Camera, Fort, Mumbai 400 001. &nbsp;Tel.: 022-22702211<br/>
-            email: jatin@megatechsolutions.co.in &nbsp;|&nbsp; Website: www.megatechsolutions.co.in &nbsp;|&nbsp; Cell: 9423191703, 9423191706
-          </div>
-          
         </div>
       </div>
-
     </div>
   )
 }

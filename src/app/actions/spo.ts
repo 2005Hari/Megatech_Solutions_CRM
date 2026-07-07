@@ -140,3 +140,12 @@ export async function updateSupplierPO(
     revalidatePath("/cpo")
   }
 }
+
+export async function deleteSPO(id: string) {
+  await prisma.supplierPO.delete({
+    where: { id }
+  })
+
+  revalidatePath("/spo")
+  revalidatePath("/")
+}
