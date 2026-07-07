@@ -132,7 +132,7 @@ export default function SPOEditForm({ spo, suppliers: initialSuppliers }: { spo:
           <div>
             <div className="text-slate-500 text-xs font-semibold uppercase tracking-wider">Linked Customer PO</div>
             <div className="text-slate-900 font-mono font-bold mt-1 text-sm">
-              {spo.cpo ? `${spo.cpo.refNo} (${spo.cpo.customer.name})` : "Standalone PO"}
+              {spo.cpo ? `${spo.cpo.refNo} (${spo.cpo.customer?.name || "Manual Entry"})` : "Standalone PO"}
             </div>
           </div>
           <button

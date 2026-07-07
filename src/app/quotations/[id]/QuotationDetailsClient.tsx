@@ -81,7 +81,7 @@ export default function QuotationDetailsClient({ quotation }: { quotation: any }
               {quotation.status}
             </span>
           </div>
-          <div className="text-muted-foreground text-xs mt-1 font-medium">{quotation.customer.name}</div>
+          <div className="text-muted-foreground text-xs mt-1 font-medium">{quotation.customer?.name || "Manual Entry"}</div>
         </div>
 
         <div className="flex gap-2">
@@ -107,7 +107,7 @@ export default function QuotationDetailsClient({ quotation }: { quotation: any }
           </button>
           {(quotation.status === "Pending" || quotation.status === "Won") && (
             <div className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-semibold flex items-center transition-colors cursor-pointer">
-              <UploadCPOModal quotationId={quotation.id} quotationRef={quotation.refNo} customerName={quotation.customer.name} />
+              <UploadCPOModal quotationId={quotation.id} quotationRef={quotation.refNo} customerName={quotation.customer?.name || "Manual Entry"} />
             </div>
           )}
         </div>
@@ -268,7 +268,7 @@ export default function QuotationDetailsClient({ quotation }: { quotation: any }
             <div className="flex justify-between text-[11px] leading-relaxed mb-3">
               <div>
                 <b>To,</b><br/>
-                <span className="text-[13px] font-bold text-red-600" dangerouslySetInnerHTML={{ __html: (quotation.customer.name + "\n" + (quotation.customer.contactDetails || "")).replace(/\n/g, '<br>') }} />
+                <span className="text-[13px] font-bold text-red-600" dangerouslySetInnerHTML={{ __html: ((quotation.customer?.name || "Manual Entry") + "\n" + (quotation.customer?.contactDetails || "")).replace(/\n/g, '<br>') }} />
               </div>
               <div className="text-right">
                 <b>Date:</b> {formatDate(new Date(quotation.date))}
