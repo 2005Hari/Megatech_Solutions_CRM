@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import UploadCPOModal from "./upload-cpo";
+import DeleteQuotationButton from "./DeleteQuotationButton";
 import { Button } from "@/components/ui/Button";
 import {
   Table,
@@ -82,6 +83,7 @@ export default async function QuotationsPage() {
                         {(q.status === 'Pending' || q.status === 'Won') && (
                           <UploadCPOModal quotationId={q.id} quotationRef={q.refNo} customerName={q.customer?.name || "Manual Entry"} />
                         )}
+                        <DeleteQuotationButton quotationId={q.id} refNo={q.refNo} />
                       </div>
                     </TableCell>
                   </TableRow>

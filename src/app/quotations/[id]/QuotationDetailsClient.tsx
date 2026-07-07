@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Eye, Download, Edit, Calendar, Info, FileText, ClipboardCheck } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import UploadCPOModal from "../upload-cpo"
+import DeleteQuotationButton from "../DeleteQuotationButton"
 
 export default function QuotationDetailsClient({ quotation }: { quotation: any }) {
   const [showPreview, setShowPreview] = useState(false)
@@ -110,6 +111,9 @@ export default function QuotationDetailsClient({ quotation }: { quotation: any }
               <UploadCPOModal quotationId={quotation.id} quotationRef={quotation.refNo} customerName={quotation.customer?.name || "Manual Entry"} />
             </div>
           )}
+          <div className="flex items-center">
+            <DeleteQuotationButton quotationId={quotation.id} refNo={quotation.refNo} redirectTo="/quotations" className="px-4 py-2 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer" showText={true} />
+          </div>
         </div>
       </div>
 

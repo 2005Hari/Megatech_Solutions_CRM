@@ -183,3 +183,12 @@ export async function updateQuotation(
   revalidatePath(`/quotations/${id}`)
   revalidatePath("/")
 }
+
+export async function deleteQuotation(id: string) {
+  await prisma.quotation.delete({
+    where: { id }
+  })
+
+  revalidatePath("/quotations")
+  revalidatePath("/")
+}
