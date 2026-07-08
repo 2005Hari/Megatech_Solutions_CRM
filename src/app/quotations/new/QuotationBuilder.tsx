@@ -5,6 +5,51 @@ import { useRouter } from "next/navigation"
 import { createQuotation, updateQuotation } from "@/app/actions/quotations"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Save, Eye, Download, User, FileText, List, Trash2, PlusCircle, ClipboardCheck, ChevronUp, ChevronDown, Plus } from "lucide-react"
+import React, { memo, useCallback } from "react"
+
+const ItemRow = memo(({ it, idx, quotationType, onChange, onRemove, products, services }: any) => {
+  const handleItemSelect = (desc: string) => {
+    const prod = products?.find((p: any) => p.desc === desc)
+    const serv = services?.find((s: any) => s.name === desc)
+    if (prod) {
+      onChange({ ...it, type: 'PRODUCT', desc: prod.desc, brand: prod.brand, rate: prod.rate })
+    } else if (serv) {
+      onChange({ ...it, type: 'SERVICE', desc: serv.name + (serv.description ? '\n' + serv.description : ''), rate: serv.defaultRate, unit: serv.defaultUnit })
+    } else {
+      onChange({ ...it, desc })
+    }
+  }
+
+  return (
+    <tr className="border-b border-card-border last:border-0 hover:bg-muted/30">
+      <td className="p-2 text-center text-xs font-bold text-muted-foreground">{idx + 1}</td>
+      <td className="p-2">
+        <select value={it.type} onChange={e => onChange({ ...it, type: e.target.value })} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-xs outline-none">
+          <option value="PRODUCT">Product</option>
+          <option value="SERVICE">Service</option>
+        </select>
+      </td>
+      <td className="p-2">
+        <div className="flex flex-col gap-1">
+          {it.type === 'PRODUCT' && <input value={it.brand || ""} onChange={e => onChange({ ...it, brand: e.target.value })} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-xs outline-none" placeholder="Brand" />}
+          <textarea value={it.desc} onChange={e => handleItemSelect(e.target.value)} rows={2} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm outline-none resize-y" placeholder="Product / Service Description" />
+        </div>
+      </td>
+      <td className="p-2"><input type="number" min={0} value={it.qty} onChange={e => onChange({ ...it, qty: parseFloat(e.target.value)||0 })} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm text-right outline-none" /></td>
+      <td className="p-2">
+        <input list="dl_units" value={it.unit || ""} onChange={e => onChange({ ...it, unit: e.target.value })} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm outline-none" placeholder="Nos" />
+      </td>
+      <td className="p-2"><input type="number" min={0} value={it.rate} onChange={e => onChange({ ...it, rate: parseFloat(e.target.value)||0 })} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm text-right outline-none" /></td>
+      <td className="p-2 text-right font-bold text-foreground">
+        {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(it.qty * it.rate)}
+      </td>
+      <td className="p-2 text-center">
+        <button onClick={() => onRemove(it.id)} className="text-muted-foreground hover:text-rose-500 p-1 rounded hover:bg-rose-50"><Trash2 size={16} /></button>
+      </td>
+    </tr>
+  )
+})
+ItemRow.displayName = "ItemRow"
 
 export default function QuotationBuilder({ 
   products,
@@ -86,18 +131,7 @@ export default function QuotationBuilder({
   const grandTotal = subtotal + gstAmount + frAmount
 
   // Handlers
-  const handleItemSelect = (desc: string, itemObj: any, setItemState: (i: any) => void) => {
-    const prod = products.find(p => p.desc === desc)
-    const serv = services.find(s => s.name === desc)
-    
-    if (prod) {
-      setItemState({ ...itemObj, type: 'PRODUCT', desc: prod.desc, brand: prod.brand, rate: prod.rate })
-    } else if (serv) {
-      setItemState({ ...itemObj, type: 'SERVICE', desc: serv.name + (serv.description ? '\n' + serv.description : ''), rate: serv.defaultRate, unit: serv.defaultUnit })
-    } else {
-      setItemState({ ...itemObj, desc })
-    }
-  }
+
 
   const handleSave = async () => {
     if (!qno) return alert("Quotation number required.")
@@ -195,7 +229,21 @@ export default function QuotationBuilder({
     }
   }
 
-  const renderItemTable = (targetItems: any[], setTargetItems: (newItems: any[]) => void, hideHeader = false) => (
+  const handleSectionItemChange = useCallback((sectionId: string, item: any) => {
+    setSections(prev => prev.map(s => s.id === sectionId ? { ...s, items: s.items.map((i: any) => i.id === item.id ? item : i) } : s))
+  }, [])
+  const handleSectionItemRemove = useCallback((sectionId: string, itemId: string) => {
+    setSections(prev => prev.map(s => s.id === sectionId ? { ...s, items: s.items.filter((i: any) => i.id !== itemId) } : s))
+  }, [])
+  
+  const handleItemChange = useCallback((item: any) => {
+    setItems(prev => prev.map(i => i.id === item.id ? item : i))
+  }, [])
+  const handleItemRemove = useCallback((itemId: string) => {
+    setItems(prev => prev.filter(i => i.id !== itemId))
+  }, [])
+
+  const renderItemTable = (targetItems: any[], onAddItem: () => void, onChange: (item: any) => void, onRemove: (id: string) => void, hideHeader = false) => (
     <div className="w-full">
       <table className="w-full text-sm text-left border-collapse">
         {!hideHeader && <thead>
@@ -212,35 +260,21 @@ export default function QuotationBuilder({
         </thead>}
         <tbody>
           {targetItems.map((it, idx) => (
-            <tr key={it.id || idx} className="border-b border-card-border last:border-0 hover:bg-muted/30">
-              <td className="p-2 text-center text-xs font-bold text-muted-foreground">{idx + 1}</td>
-              <td className="p-2">
-                <select value={it.type} onChange={e => setTargetItems(targetItems.map(i => i.id === it.id ? { ...i, type: e.target.value } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-xs outline-none">
-                  <option value="PRODUCT">Product</option>
-                  <option value="SERVICE">Service</option>
-                </select>
-              </td>
-              <td className="p-2">
-                <div className="flex flex-col gap-1">
-                  {it.type === 'PRODUCT' && <input value={it.brand || ""} onChange={e => setTargetItems(targetItems.map(i => i.id === it.id ? { ...i, brand: e.target.value } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-xs outline-none" placeholder="Brand" />}
-                  <textarea value={it.desc} onChange={e => handleItemSelect(e.target.value, it, (newItem) => setTargetItems(targetItems.map(i => i.id === it.id ? newItem : i)))} rows={2} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm outline-none resize-y" placeholder="Product / Service Description" />
-                </div>
-              </td>
-              <td className="p-2"><input type="number" min={0} value={it.qty} onChange={e => setTargetItems(targetItems.map(i => i.id === it.id ? { ...i, qty: parseFloat(e.target.value)||0 } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm text-right outline-none" /></td>
-              <td className="p-2">
-                <input list="dl_units" value={it.unit || ""} onChange={e => setTargetItems(targetItems.map(i => i.id === it.id ? { ...i, unit: e.target.value } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm outline-none" placeholder="Nos" />
-              </td>
-              <td className="p-2"><input type="number" min={0} value={it.rate} onChange={e => setTargetItems(targetItems.map(i => i.id === it.id ? { ...i, rate: parseFloat(e.target.value)||0 } : i))} className="w-full border border-card-border bg-transparent text-foreground rounded p-2 text-sm text-right outline-none" /></td>
-              <td className="p-2 text-right font-bold text-foreground">{formatCurrency(it.qty * it.rate)}</td>
-              <td className="p-2 text-center">
-                <button onClick={() => setTargetItems(targetItems.filter(i => i.id !== it.id))} className="text-muted-foreground hover:text-rose-500 p-1 rounded hover:bg-rose-50"><Trash2 size={16} /></button>
-              </td>
-            </tr>
+            <ItemRow 
+              key={it.id || idx} 
+              it={it} 
+              idx={idx} 
+              quotationType={quotationType} 
+              onChange={onChange} 
+              onRemove={onRemove} 
+              products={products} 
+              services={services} 
+            />
           ))}
         </tbody>
       </table>
       <div className="p-2">
-        <button onClick={() => setTargetItems([...targetItems, { id: Math.random().toString(), type: quotationType === "SERVICE" ? "SERVICE" : "PRODUCT", brand: "", desc: "", qty: 1, rate: 0, estCost: 0, order: targetItems.length }])} className="text-xs font-bold text-accent hover:underline flex items-center gap-1"><Plus size={12}/> Add Item</button>
+        <button onClick={onAddItem} className="text-xs font-bold text-accent hover:underline flex items-center gap-1"><Plus size={12}/> Add Item</button>
       </div>
     </div>
   )
@@ -360,11 +394,22 @@ export default function QuotationBuilder({
                 <input value={sec.name} onChange={e => setSections(sections.map(s => s.id === sec.id ? { ...s, name: e.target.value } : s))} className="font-bold text-sm bg-transparent outline-none w-1/2 px-2" placeholder="Section Name" />
                 <button onClick={() => setSections(sections.filter(s => s.id !== sec.id))} className="text-rose-500 hover:bg-rose-50 p-1 rounded"><Trash2 size={14}/></button>
               </div>
-              {renderItemTable(sec.items, (newItems) => setSections(sections.map(s => s.id === sec.id ? { ...s, items: newItems } : s)))}
+              {renderItemTable(
+                sec.items, 
+                () => setSections(sections.map(s => s.id === sec.id ? { ...s, items: [...s.items, { id: Math.random().toString(), type: quotationType === "SERVICE" ? "SERVICE" : "PRODUCT", brand: "", desc: "", qty: 1, rate: 0, estCost: 0, order: s.items.length }] } : s)),
+                (item) => handleSectionItemChange(sec.id, item),
+                (itemId) => handleSectionItemRemove(sec.id, itemId)
+              )}
             </div>
           ))}
 
-          {renderItemTable(items, setItems, sections.length > 0)}
+          {renderItemTable(
+            items, 
+            () => setItems([...items, { id: Math.random().toString(), type: quotationType === "SERVICE" ? "SERVICE" : "PRODUCT", brand: "", desc: "", qty: 1, rate: 0, estCost: 0, order: items.length }]),
+            handleItemChange,
+            handleItemRemove,
+            sections.length > 0
+          )}
         </div>
       </div>
 
