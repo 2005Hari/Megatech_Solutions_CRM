@@ -11,8 +11,9 @@ import {
   writeQuotationBody,
   type QuotationPayload,
 } from "@/lib/quotation-payload"
-import { baseRef, nextQuotationRef } from "@/lib/refs"
+import { baseRef } from "@/lib/refs"
 import { createSupplierPODraft } from "@/lib/spo-draft"
+import { createQuotationCore } from "@/lib/quotation-create"
 import {
   CONVERTIBLE_QUOTATION_STATUSES,
   EDITABLE_QUOTATION_STATUSES,
@@ -41,36 +42,10 @@ export async function createQuotation(
     const data = parseQuotationPayload(payload)
     await assertCustomerExists(data.customerId)
 
-    const created = await prisma.$transaction(async tx => {
-      const refNo = data.refNo ?? (await nextQuotationRef(tx))
-      if (data.refNo && (await tx.quotation.count({ where: { refNo } })) > 0) {
-        throw new UserError(`Quotation number ${refNo} is already in use.`)
-      }
-
-      const quotation = await tx.quotation.create({
-        data: {
-          refNo,
-          customerId: data.customerId,
-          customerAddress: data.customerAddress,
-          date: data.date,
-          validUntil: data.validUntil,
-          status: "Draft",
-          salutation: data.salutation,
-          subject: data.subject,
-          type: data.type,
-          includeGst: data.includeGst,
-          gstPct: data.gstPct,
-          includeFreight: data.includeFreight,
-          freightAmount: data.freightAmount,
-          terms: data.terms,
-        },
-      })
-      await writeQuotationBody(tx, quotation.id, data)
-      return quotation
-    })
+    const created = await createQuotationCore(data)
 
     revalidateQuotations()
-    return { id: created.id, refNo: created.refNo }
+    return created
   })
 }
 

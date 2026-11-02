@@ -2,10 +2,22 @@ import { NextResponse, type NextRequest } from "next/server"
 import { SESSION_COOKIE, getAuthConfig, verifySessionToken } from "@/lib/auth-token"
 
 /**
+ * API routes that authenticate themselves and must stay reachable without a
+ * browser session cookie (e.g. the WhatsApp webhook, verified by Meta's HMAC
+ * signature - see src/app/api/whatsapp/webhook/route.ts).
+ */
+const SELF_AUTHENTICATING_PREFIXES = ["/api/whatsapp/"]
+
+/**
  * Gate every page behind the login. (Server actions re-check on their own via
  * `requireAuth()`, because they can be POSTed to directly.)
  */
 export async function proxy(request: NextRequest) {
+  const { pathname: earlyPathname } = request.nextUrl
+  if (SELF_AUTHENTICATING_PREFIXES.some(p => earlyPathname.startsWith(p))) {
+    return NextResponse.next()
+  }
+
   const cfg = getAuthConfig()
 
   if (cfg.mode === "disabled") return NextResponse.next()

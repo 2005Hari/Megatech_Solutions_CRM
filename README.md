@@ -80,6 +80,68 @@ Customer PO  ──creates──▶  Supplier PO draft (one per conversion, item
 Server actions return `{ ok: true, data } | { ok: false, error }` rather than throwing: Next.js hides thrown error
 messages in production, so users would only ever see a generic failure. Add new actions with `runAction()`.
 
+## WhatsApp bot: paste a requirement, get a draft quotation
+
+A staff member forwards a customer's requirement text to a dedicated WhatsApp number; the bot parses it,
+matches each line against the **Products**/**Services** catalogue in Settings, creates a Draft quotation
+from whatever matched, and replies **on that same staff chat** with the totals and a review link.
+
+```
+Customer → (your normal WhatsApp number) → Staff reads it
+  → Staff forwards/pastes it to the bot number
+    → Bot creates a Draft quotation, replies to STAFF with a summary + link
+      → Staff reviews/edits in the app and sends it to the customer themselves
+```
+
+The bot never messages a customer directly - it only ever replies to the staff number that wrote to it.
+There is no in-app review step before the quotation is created (by design - see the chat history this was
+built from), so two things matter more than usual here:
+
+- **The allowlist is the only gate.** Only numbers added under Settings → "WhatsApp bot - allowed numbers"
+  can trigger it; anyone else is silently ignored and logged as `IGNORED_UNAUTHORIZED`.
+- **A line is never guessed.** If the bot isn't confident a line matches something in the catalogue, that
+  line is left OUT of the created quotation (never priced at ₹0) and named explicitly in the WhatsApp reply
+  so nothing is silently dropped. Every message the bot acts on - matched, unmatched, or failed - is logged
+  in the `BotRequirementLog` table for audit.
+
+### Setup (Meta WhatsApp Cloud API)
+
+1. Create a [Meta developer app](https://developers.facebook.com/apps) with the **WhatsApp** product added.
+   Meta gives you a test phone number for free to develop against.
+2. Under WhatsApp → API Setup, copy the **Phone number ID** and a (temporary, or permanent via a System
+   User) **access token** into `WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_ACCESS_TOKEN`.
+3. Under App Settings → Basic, copy the **App Secret** into `WHATSAPP_APP_SECRET`.
+4. Pick any random string for `WHATSAPP_VERIFY_TOKEN` (you choose this, Meta just echoes it back once).
+5. Set `ANTHROPIC_API_KEY` (the bot calls Claude to parse the message) and `APP_URL` (your deployment's URL).
+6. Deploy, then in the Meta app's WhatsApp → Configuration, set the webhook URL to
+   `https://<your-domain>/api/whatsapp/webhook`, the verify token to the value from step 4, and subscribe
+   to the `messages` field.
+7. In this app, go to Settings and:
+   - Add each staff phone number that may use the bot, in international format (e.g. `919876543210`).
+   - Check the **Products** catalogue - it's seeded from a short starter list; add your real products so
+     the bot has something to match against.
+8. From a WhatsApp chat with the test number, send a requirement, e.g.:
+   ```
+   Customer: Rajan Enterprises
+   2 CP Plus dome cameras, 1 4 channel NVR
+   ```
+   The `Customer: ...` first line is optional - if it matches exactly one existing customer the quotation
+   is linked to them; otherwise it's created unlinked.
+
+### Known limitations (v1)
+
+- The bot's WhatsApp reply is plain text with a review link, not a PDF - generating a PDF server-side in a
+  webhook needs a headless browser, which doesn't fit well in a serverless function. Staff download/send the
+  PDF from the app itself after reviewing.
+- The whole catalogue is sent to Claude on every message (`src/lib/whatsapp/catalog.ts`), so this doesn't
+  scale past a few hundred products without adding a retrieval/shortlisting step first.
+- Customer matching is a single `Customer: <name>` line, matched case-insensitively; there's no interactive
+  "did you mean X or Y" follow-up yet.
+- I could not test the Claude extraction or real WhatsApp delivery live while building this - there were no
+  API credentials in the environment. The webhook's signature verification, allowlist enforcement, logging,
+  and the outbound Meta Graph API request shape were all exercised against the real Graph API's auth check
+  (see the PR/commit this came from); only the actual parsing quality and message delivery are unverified.
+
 ## Database migrations
 
 Production has so far been managed with `prisma db push` (that is what `npm run build` still runs). A proper
@@ -99,6 +161,7 @@ Running `migrate deploy` on the existing database *before* baselining fails with
 ## Known limitations
 
 - Customer PO PDFs: only the **file name** is stored; the file itself is not saved anywhere yet.
-- The quotation product picker is a fixed starter list in `src/lib/catalog.ts` (there is no Product table).
 - Money is stored as `Float` and rounded to 2 decimals at the server boundary.
-- One shared password, no per-user accounts or audit trail.
+- One shared password, no per-user accounts or audit trail (the WhatsApp bot has its own separate audit
+  trail - `BotRequirementLog` - since staff identity there is a phone number, not a login).
+- See "WhatsApp bot" above for that feature's own v1 limitations.

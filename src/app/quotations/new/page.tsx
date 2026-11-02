@@ -1,12 +1,17 @@
 import { prisma } from "@/lib/prisma"
-import { PRODUCTS } from "@/lib/catalog"
+import type { ProductOption } from "@/lib/catalog"
 import { previewQuotationRef } from "@/lib/refs"
 import QuotationBuilder from "./QuotationBuilder"
 
 export const dynamic = "force-dynamic"
 
 export default async function NewQuotationPage() {
-  const [services, units, customers, suggestedRefNo] = await Promise.all([
+  const [dbProducts, services, units, customers, suggestedRefNo] = await Promise.all([
+    prisma.product.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { brand: true, name: true, defaultRate: true },
+    }),
     prisma.service.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
@@ -16,11 +21,12 @@ export default async function NewQuotationPage() {
     prisma.customer.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, contactDetails: true } }),
     previewQuotationRef(prisma),
   ])
+  const products: ProductOption[] = dbProducts.map(p => ({ brand: p.brand ?? "", desc: p.name, rate: p.defaultRate }))
 
   return (
     <div className="p-8">
       <QuotationBuilder
-        products={PRODUCTS}
+        products={products}
         services={services}
         units={units}
         customers={customers}

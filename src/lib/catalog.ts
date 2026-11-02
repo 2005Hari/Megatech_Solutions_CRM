@@ -1,8 +1,8 @@
 /**
- * Quick-pick product list for the quotation builder.
- *
- * There is no Product table yet, so this is a fixed starter catalogue. It used
- * to be copy-pasted into both the "new" and "edit" pages; it now lives here.
+ * Starter product catalogue, seeded into the `Product` table (see
+ * prisma/seed.ts) the first time the database is set up. Products are
+ * managed from Settings after that - this file is seed data, not the live
+ * catalogue; the builder and the WhatsApp bot both read from the database.
  */
 export type ProductOption = { brand: string; desc: string; rate: number }
 

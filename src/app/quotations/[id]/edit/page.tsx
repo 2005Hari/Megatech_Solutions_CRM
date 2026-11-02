@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import { prisma } from "@/lib/prisma"
-import { PRODUCTS } from "@/lib/catalog"
+import type { ProductOption } from "@/lib/catalog"
 import { EDITABLE_QUOTATION_STATUSES } from "@/lib/status"
 import QuotationBuilder from "../../new/QuotationBuilder"
 
@@ -25,7 +25,12 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
     redirect(`/quotations/${quotation.id}`)
   }
 
-  const [services, units, customers] = await Promise.all([
+  const [dbProducts, services, units, customers] = await Promise.all([
+    prisma.product.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: { brand: true, name: true, defaultRate: true },
+    }),
     prisma.service.findMany({
       where: { active: true },
       orderBy: { name: "asc" },
@@ -34,6 +39,7 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
     prisma.unit.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.customer.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, contactDetails: true } }),
   ])
+  const products: ProductOption[] = dbProducts.map(p => ({ brand: p.brand ?? "", desc: p.name, rate: p.defaultRate }))
 
   return (
     <div className="p-8">
@@ -53,7 +59,7 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
       </div>
 
       <QuotationBuilder
-        products={PRODUCTS}
+        products={products}
         services={services}
         units={units}
         customers={customers}

@@ -1,8 +1,21 @@
 import { PrismaClient } from '@prisma/client'
+import { PRODUCTS } from '../src/lib/catalog'
+import { catalogKey } from '../src/lib/catalog-key'
 
 const prisma = new PrismaClient()
 
 async function main() {
+  // Product catalogue: upsert (idempotent, keeps any edits made via Settings
+  // to products not in this starter list; re-running the seed is safe).
+  for (const p of PRODUCTS) {
+    const key = catalogKey(p.brand, p.desc)
+    await prisma.product.upsert({
+      where: { catalogKey: key },
+      create: { catalogKey: key, brand: p.brand, name: p.desc, defaultRate: p.rate },
+      update: { brand: p.brand, name: p.desc, defaultRate: p.rate },
+    })
+  }
+
   // Clear existing
   await prisma.statusHistory.deleteMany()
   await prisma.supplierPOItem.deleteMany()

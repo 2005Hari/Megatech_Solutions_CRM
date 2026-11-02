@@ -4,9 +4,11 @@ import { useState } from "react"
 import type { ActionResult } from "@/lib/action-result"
 import { useRouter } from "next/navigation"
 import { Pencil, Plus, Trash2, X } from "lucide-react"
-import type { Service, Unit } from "@prisma/client"
+import type { Product, Service, Unit, WhatsAppSender } from "@prisma/client"
 import { createService, deleteService, updateService, type ServiceInput } from "@/app/actions/services"
 import { createUnit, deleteUnit, updateUnit } from "@/app/actions/units"
+import { createProduct, deleteProduct, updateProduct, type ProductInput } from "@/app/actions/products"
+import { createWhatsAppSender, deleteWhatsAppSender, updateWhatsAppSender } from "@/app/actions/whatsapp-senders"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { useFeedback } from "@/components/ui/Feedback"
@@ -212,11 +214,268 @@ function ServicesCard({ services }: { services: Service[] }) {
   )
 }
 
-export default function SettingsClient({ units, services }: { units: Unit[]; services: Service[] }) {
+const EMPTY_PRODUCT: ProductInput = {
+  brand: "",
+  name: "",
+  description: "",
+  defaultUnit: "Nos",
+  defaultRate: 0,
+  defaultCost: undefined,
+  sacCode: "",
+  active: true,
+}
+
+function ProductsCard({ products }: { products: Product[] }) {
+  const router = useRouter()
+  const { notify, confirm } = useFeedback()
+  const [editing, setEditing] = useState<string | "new" | null>(null)
+  const [form, setForm] = useState<ProductInput>(EMPTY_PRODUCT)
+  const [busy, setBusy] = useState(false)
+
+  const open = (p?: Product) => {
+    setEditing(p ? p.id : "new")
+    setForm(
+      p
+        ? {
+            brand: p.brand ?? "",
+            name: p.name,
+            description: p.description ?? "",
+            defaultUnit: p.defaultUnit,
+            defaultRate: p.defaultRate,
+            defaultCost: p.defaultCost ?? undefined,
+            sacCode: p.sacCode ?? "",
+            active: p.active,
+          }
+        : EMPTY_PRODUCT,
+    )
+  }
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      const res: ActionResult<unknown> =
+        editing === "new" ? await createProduct(form) : await updateProduct(editing as string, form)
+      if (!notify(res, editing === "new" ? "Product added." : "Product updated.")) return
+      setEditing(null)
+      router.refresh()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const set = <K extends keyof ProductInput>(k: K, v: ProductInput[K]) => setForm(f => ({ ...f, [k]: v }))
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[320px_1fr] items-start">
-      <UnitsCard units={units} />
-      <ServicesCard services={services} />
+    <section className={card} aria-labelledby="products-h">
+      <div className="px-6 py-4 border-b border-card-border flex items-center justify-between">
+        <div>
+          <h2 id="products-h" className="font-bold text-foreground">Products</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            The catalogue used in the quotation builder&apos;s picker and matched against by the WhatsApp bot.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => open()}><Plus size={14} className="mr-1" /> Add product</Button>
+      </div>
+
+      {editing && (
+        <form onSubmit={save} className="p-4 border-b border-card-border bg-muted/20 grid grid-cols-6 gap-3">
+          <div className="col-span-2">
+            <label htmlFor="prod-brand" className={label}>Brand</label>
+            <Input id="prod-brand" value={form.brand ?? ""} onChange={e => set("brand", e.target.value)} placeholder="e.g. CP Plus" />
+          </div>
+          <div className="col-span-4">
+            <label htmlFor="prod-name" className={label}>Name</label>
+            <Input id="prod-name" value={form.name} onChange={e => set("name", e.target.value)} required placeholder="e.g. 2MP Dome Camera (CP-UNC-DA21L3)" />
+          </div>
+          <div className="col-span-3">
+            <label htmlFor="prod-desc" className={label}>Description</label>
+            <Input id="prod-desc" value={form.description ?? ""} onChange={e => set("description", e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="prod-unit" className={label}>Unit</label>
+            <Input id="prod-unit" value={form.defaultUnit} onChange={e => set("defaultUnit", e.target.value)} required />
+          </div>
+          <div>
+            <label htmlFor="prod-rate" className={label}>Sell rate (₹)</label>
+            <Input id="prod-rate" type="number" min={0} step="any" value={form.defaultRate} onChange={e => set("defaultRate", Number(e.target.value) || 0)} />
+          </div>
+          <div>
+            <label htmlFor="prod-cost" className={label}>Est. cost (₹)</label>
+            <Input
+              id="prod-cost"
+              type="number"
+              min={0}
+              step="any"
+              value={form.defaultCost ?? ""}
+              onChange={e => set("defaultCost", e.target.value === "" ? undefined : Number(e.target.value) || 0)}
+              placeholder="optional"
+            />
+          </div>
+          <div>
+            <label htmlFor="prod-sac" className={label}>HSN/SAC</label>
+            <Input id="prod-sac" value={form.sacCode ?? ""} onChange={e => set("sacCode", e.target.value)} />
+          </div>
+          <label className="flex items-end gap-2 text-sm pb-2 cursor-pointer">
+            <input type="checkbox" checked={form.active} onChange={e => set("active", e.target.checked)} /> Active
+          </label>
+          <div className="col-span-2 flex items-end justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setEditing(null)}><X size={14} className="mr-1" /> Cancel</Button>
+            <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+          </div>
+        </form>
+      )}
+
+      <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-muted/50 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-card-border sticky top-0">
+            <tr>
+              <th className="px-4 py-3">Product</th>
+              <th className="px-4 py-3">Unit</th>
+              <th className="px-4 py-3 text-right">Rate</th>
+              <th className="px-4 py-3 text-right">Cost</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 w-20"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-card-border">
+            {products.length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No products yet.</td></tr>
+            )}
+            {products.map(p => (
+              <tr key={p.id} className="hover:bg-muted/30">
+                <td className="px-4 py-3">
+                  <div className="font-semibold text-foreground">{p.brand ? `${p.brand} ${p.name}` : p.name}</div>
+                  {p.description && <div className="text-xs text-muted-foreground">{p.description}</div>}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">{p.defaultUnit}</td>
+                <td className="px-4 py-3 text-right font-medium">{formatCurrency(p.defaultRate)}</td>
+                <td className="px-4 py-3 text-right text-muted-foreground">{p.defaultCost ? formatCurrency(p.defaultCost) : "—"}</td>
+                <td className="px-4 py-3 text-xs">{p.active ? "Active" : <span className="text-muted-foreground">Hidden</span>}</td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-2 justify-end">
+                    <button aria-label={`Edit ${p.name}`} className="text-muted-foreground hover:text-foreground" onClick={() => open(p)}><Pencil size={15} /></button>
+                    <button
+                      aria-label={`Delete ${p.name}`}
+                      className="text-muted-foreground hover:text-rose-500"
+                      onClick={async () => {
+                        if (!(await confirm({ title: `Delete product "${p.name}"?`, confirmLabel: "Delete", destructive: true }))) return
+                        if (notify(await deleteProduct(p.id), "Product deleted.")) router.refresh()
+                      }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function WhatsAppSendersCard({ senders }: { senders: WhatsAppSender[] }) {
+  const router = useRouter()
+  const { notify, confirm } = useFeedback()
+  const [phoneNumber, setPhoneNumber] = useState("")
+  const [senderLabel, setSenderLabel] = useState("")
+  const [busy, setBusy] = useState(false)
+
+  const run = async <T,>(fn: () => Promise<ActionResult<T>>, message: string) => {
+    setBusy(true)
+    try {
+      if (notify(await fn(), message)) router.refresh()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className={card} aria-labelledby="wa-h">
+      <div className="px-6 py-4 border-b border-card-border">
+        <h2 id="wa-h" className="font-bold text-foreground">WhatsApp bot - allowed numbers</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Only messages from these numbers are turned into quotations. Everyone else is ignored.
+        </p>
+      </div>
+      <form
+        className="flex flex-col gap-2 p-4 border-b border-card-border"
+        onSubmit={async e => {
+          e.preventDefault()
+          await run(() => createWhatsAppSender({ phoneNumber, label: senderLabel, active: true }), "Number added.")
+          setPhoneNumber("")
+          setSenderLabel("")
+        }}
+      >
+        <Input
+          aria-label="Phone number"
+          value={phoneNumber}
+          onChange={e => setPhoneNumber(e.target.value)}
+          placeholder="e.g. 919876543210"
+          required
+        />
+        <Input aria-label="Staff name" value={senderLabel} onChange={e => setSenderLabel(e.target.value)} placeholder="Staff name" required />
+        <Button type="submit" disabled={busy}><Plus size={14} className="mr-1" /> Add</Button>
+      </form>
+      <ul className="divide-y divide-card-border">
+        {senders.length === 0 && <li className="p-4 text-sm text-muted-foreground">No numbers allowlisted yet - the bot will ignore everyone.</li>}
+        {senders.map(s => (
+          <li key={s.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+            <div className="flex-1 min-w-0">
+              <div className={`font-medium truncate ${s.active ? "text-foreground" : "text-muted-foreground line-through"}`}>{s.label}</div>
+              <div className="text-xs text-muted-foreground font-mono">+{s.phoneNumber}</div>
+            </div>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={s.active}
+                disabled={busy}
+                onChange={() => run(() => updateWhatsAppSender(s.id, { phoneNumber: s.phoneNumber, label: s.label, active: !s.active }), s.active ? "Disabled." : "Enabled.")}
+              />
+              Active
+            </label>
+            <button
+              aria-label={`Remove ${s.label}`}
+              disabled={busy}
+              className="text-muted-foreground hover:text-rose-500 shrink-0"
+              onClick={async () => {
+                if (await confirm({ title: `Remove "${s.label}" from the allowlist?`, confirmLabel: "Remove", destructive: true })) {
+                  await run(() => deleteWhatsAppSender(s.id), "Removed.")
+                }
+              }}
+            >
+              <Trash2 size={15} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+export default function SettingsClient({
+  units,
+  services,
+  products,
+  whatsAppSenders,
+}: {
+  units: Unit[]
+  services: Service[]
+  products: Product[]
+  whatsAppSenders: WhatsAppSender[]
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[320px_1fr] items-start">
+        <UnitsCard units={units} />
+        <ServicesCard services={services} />
+      </div>
+      <div className="grid gap-6 lg:grid-cols-[320px_1fr] items-start">
+        <WhatsAppSendersCard senders={whatsAppSenders} />
+        <ProductsCard products={products} />
+      </div>
     </div>
   )
 }

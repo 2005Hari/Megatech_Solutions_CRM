@@ -45,6 +45,68 @@ model Service {
   updatedAt   DateTime @updatedAt
 }
 
+/// The product catalogue. Quotation lines are picked from here by staff in the
+/// builder, and matched against here by the WhatsApp bot. `catalogKey` is a
+/// stable, human-readable identifier ("brand|name") used only to let the bot's
+/// extraction model reference a product without relying on its UUID.
+model Product {
+  id          String   @id @default(uuid())
+  catalogKey  String   @unique
+  brand       String?
+  name        String
+  description String?
+  defaultUnit String   @default("Nos")
+  defaultRate Float    @default(0) // sell price
+  defaultCost Float? // estimated cost, for expected-margin calculations
+  sacCode     String? // HSN/SAC code
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+}
+
+/// Staff WhatsApp numbers allowed to trigger the requirement-parsing bot.
+/// The bot has no in-app review step before replying, so this allowlist is
+/// the only gate between an inbound WhatsApp message and a created
+/// quotation - every webhook request is checked against it.
+model WhatsAppSender {
+  id          String   @id @default(uuid())
+  /// E.164 phone number as WhatsApp sends it (digits only, e.g. "919876543210")
+  phoneNumber String   @unique
+  label       String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+enum BotRequirementStatus {
+  RECEIVED
+  IGNORED_UNAUTHORIZED
+  PARSED
+  QUOTATION_CREATED
+  FAILED
+}
+
+/// Audit trail for every inbound WhatsApp message the bot acted on (or
+/// refused to act on). There is no human review before a quotation is
+/// created, so this is how staff can see what the bot did and why.
+model BotRequirementLog {
+  id              String                @id @default(uuid())
+  fromPhone       String
+  rawMessage      String
+  status          BotRequirementStatus
+  customerHint    String? // "Customer: ..." line as parsed, before matching
+  matchedCustomerId String?
+  quotationId     String?
+  matchedCount    Int                   @default(0)
+  unmatchedItems  String? // JSON string array of unmatched line descriptions
+  errorMessage    String?
+  createdAt       DateTime              @default(now())
+
+  @@index([fromPhone])
+  @@index([createdAt])
+}
+
 model Customer {
   id             String       @id @default(uuid())
   name           String
