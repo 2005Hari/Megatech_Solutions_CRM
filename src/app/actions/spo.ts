@@ -15,13 +15,9 @@ import {
   requiredId,
   requiredString,
 } from "@/lib/validation"
-import {
-  EDITABLE_SPO_STATUSES,
-  RECEIVED_SPO_STATUSES,
-  SPO_STATUSES,
-  canTransitionSpo,
-} from "@/lib/status"
-import { isPriced } from "@/lib/finance"
+import { EDITABLE_SPO_STATUSES, SPO_STATUSES } from "@/lib/status"
+import { transitionSpoStatusCore } from "@/lib/spo-status-core"
+import { deleteSpoCore } from "@/lib/delete-cores"
 
 function revalidateSpo(spoId: string, cpoId?: string | null) {
   revalidatePath("/")
@@ -58,44 +54,7 @@ export async function transitionSPOStatus(spoId: string, newStatus: string): Pro
     requiredId(spoId, "Supplier PO")
     const next = oneOf(newStatus, SPO_STATUSES, "Status")
 
-    const cpoId = await prisma.$transaction(async tx => {
-      const spo = await tx.supplierPO.findUnique({
-        where: { id: spoId },
-        include: { items: { select: { buyPrice: true } } },
-      })
-      if (!spo) throw new UserError("Supplier PO not found.")
-
-      if (!canTransitionSpo(spo.status, next)) {
-        throw new UserError(`A supplier PO cannot move from "${spo.status}" to "${next}".`)
-      }
-
-      if (next === "Sent") {
-        if (!spo.supplierId) throw new UserError("Assign a supplier before sending the PO.")
-        if (spo.items.length === 0) throw new UserError("The PO has no items.")
-        if (spo.items.some(i => !isPriced(i.buyPrice))) {
-          throw new UserError("Enter a buy price for every item before sending the PO.")
-        }
-      }
-
-      await tx.supplierPO.update({
-        where: { id: spoId },
-        data: { status: next, statusHistory: { create: { status: next } } },
-      })
-
-      // The customer order is only fulfilled once EVERY supplier PO raised
-      // for it has been received.
-      if (next === "Fully Received" && spo.cpoId) {
-        const siblings = await tx.supplierPO.findMany({
-          where: { cpoId: spo.cpoId },
-          select: { status: true },
-        })
-        if (siblings.every(s => RECEIVED_SPO_STATUSES.includes(s.status))) {
-          await tx.customerPO.update({ where: { id: spo.cpoId }, data: { status: "Fulfilled" } })
-        }
-      }
-
-      return spo.cpoId
-    })
+    const { cpoId } = await transitionSpoStatusCore(spoId, next)
 
     revalidateSpo(spoId, cpoId)
   })
@@ -185,13 +144,10 @@ export async function deleteSPO(id: string): Promise<ActionResult> {
     await requireAuth()
     requiredId(id, "Supplier PO")
 
-    const spo = await prisma.supplierPO.findUnique({ where: { id }, select: { status: true, cpoId: true } })
+    const spo = await prisma.supplierPO.findUnique({ where: { id }, select: { cpoId: true } })
     if (!spo) throw new UserError("Supplier PO not found.")
-    if (!EDITABLE_SPO_STATUSES.includes(spo.status)) {
-      throw new UserError(`A supplier PO with status "${spo.status}" has already gone to the supplier and cannot be deleted.`)
-    }
 
-    await prisma.supplierPO.delete({ where: { id } })
+    await deleteSpoCore(id)
     revalidateSpo(id, spo.cpoId)
   })
 }

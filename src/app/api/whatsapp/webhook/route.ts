@@ -8,7 +8,7 @@ import {
   verifyWebhookSignature,
 } from "@/lib/whatsapp/client"
 import { isAllowedSender } from "@/lib/whatsapp/allowlist"
-import { handleWhatsAppRequirement } from "@/lib/whatsapp/handle-requirement"
+import { handleWhatsAppMessage } from "@/lib/whatsapp/handle-message"
 
 export const dynamic = "force-dynamic"
 
@@ -31,12 +31,14 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Inbound WhatsApp messages. There is no human review before a quotation is
- * created, so every request is verified twice before anything runs: the
- * HMAC signature (proves the request really came from Meta) and the sender
- * allowlist (proves it is one of your staff, not whoever else discovers the
- * number). Always return 200 once the signature checks out, even on
- * failure, so Meta does not retry-storm a message that keeps erroring.
+ * Inbound WhatsApp messages. There is no human review before the agent's
+ * write tools run (destructive ones are gated by an in-chat confirmation
+ * step - see handle-message.ts), so every request is verified twice before
+ * anything runs: the HMAC signature (proves the request really came from
+ * Meta) and the sender allowlist (proves it is one of your staff, not
+ * whoever else discovers the number). Always return 200 once the signature
+ * checks out, even on failure, so Meta does not retry-storm a message that
+ * keeps erroring.
  */
 export async function POST(request: NextRequest) {
   const config = getWhatsAppConfig()
@@ -61,26 +63,26 @@ export async function POST(request: NextRequest) {
     try {
       const allowed = await isAllowedSender(message.from)
       if (!allowed) {
-        await prisma.botRequirementLog.create({
+        await prisma.botActionLog.create({
           data: {
             fromPhone: message.from,
-            rawMessage: message.text,
+            userMessage: message.text,
             status: "IGNORED_UNAUTHORIZED",
           },
         })
         continue // do not reply to an unrecognised number
       }
 
-      const result = await handleWhatsAppRequirement({ fromPhone: message.from, rawMessage: message.text })
+      const result = await handleWhatsAppMessage({ fromPhone: message.from, text: message.text })
       await sendWhatsAppText(config, message.from, result.replyText)
     } catch (err) {
       console.error("[whatsapp webhook] failed to handle message:", err)
-      // Best-effort failure reply so staff know to build the quotation by
-      // hand instead of assuming the bot is still working on it.
+      // Best-effort failure reply so staff know to use the app directly
+      // instead of assuming the bot is still working on it.
       await sendWhatsAppText(
         config,
         message.from,
-        "⚠️ Sorry, something went wrong processing that requirement. Please create the quotation manually in the app.",
+        "⚠️ Sorry, something went wrong answering that. Please try again, or use the app directly.",
       ).catch(sendErr => console.error("[whatsapp webhook] failed to send error reply:", sendErr))
     }
   }

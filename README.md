@@ -80,29 +80,45 @@ Customer PO  ──creates──▶  Supplier PO draft (one per conversion, item
 Server actions return `{ ok: true, data } | { ok: false, error }` rather than throwing: Next.js hides thrown error
 messages in production, so users would only ever see a generic failure. Add new actions with `runAction()`.
 
-## WhatsApp bot: paste a requirement, get a draft quotation
+## WhatsApp assistant: ask it for anything in the system, or tell it to do something
 
-A staff member forwards a customer's requirement text to a dedicated WhatsApp number; the bot parses it,
-matches each line against the **Products**/**Services** catalogue in Settings, creates a Draft quotation
-from whatever matched, and replies **on that same staff chat** with the totals and a review link.
+A staff member chats with a dedicated WhatsApp number. It's a real multi-turn conversation (it remembers
+context within a chat), backed by Claude with tool access to your actual data - quotations, customer POs,
+supplier POs, customers, margins - plus the ability to create a quotation, move something to a new status,
+set supplier buy prices, or delete a record (with a confirmation step - see below). It never messages a
+customer directly; it only ever replies to the staff number that wrote to it.
 
 ```
-Customer → (your normal WhatsApp number) → Staff reads it
-  → Staff forwards/pastes it to the bot number
-    → Bot creates a Draft quotation, replies to STAFF with a summary + link
-      → Staff reviews/edits in the app and sends it to the customer themselves
+Staff, on WhatsApp: "what's the status of MTS-2026-014"
+Bot: looks it up, replies with status/items/totals
+
+Staff: "2 cp plus dome cameras and 1 nvr for Rajan Enterprises"
+Bot: matches the catalogue, creates a Draft quotation, replies with the total + a review link
+
+Staff: "mark SPO-2026-0007 as sent"
+Bot: checks it's allowed (supplier assigned, every item priced), does it, confirms
+
+Staff: "delete CPO-2026-003"
+Bot: "Are you sure? Reply yes to confirm." → only deletes once staff replies "yes"
 ```
 
-The bot never messages a customer directly - it only ever replies to the staff number that wrote to it.
-There is no in-app review step before the quotation is created (by design - see the chat history this was
-built from), so two things matter more than usual here:
+There is no in-app review step before most of this runs (by design - see the chat history this was built
+from), so three things matter more than usual here:
 
 - **The allowlist is the only gate.** Only numbers added under Settings → "WhatsApp bot - allowed numbers"
-  can trigger it; anyone else is silently ignored and logged as `IGNORED_UNAUTHORIZED`.
-- **A line is never guessed.** If the bot isn't confident a line matches something in the catalogue, that
-  line is left OUT of the created quotation (never priced at ₹0) and named explicitly in the WhatsApp reply
-  so nothing is silently dropped. Every message the bot acts on - matched, unmatched, or failed - is logged
-  in the `BotRequirementLog` table for audit.
+  can talk to it; anyone else is silently ignored and logged as `IGNORED_UNAUTHORIZED`.
+- **A line is never guessed.** Creating a quotation only prices items the model can match exactly to your
+  Products/Services catalogue (by an exact key it was given - if it invents one, that's treated as no
+  match, not trusted). Anything unmatched is left out and named explicitly in the reply.
+- **Deletes need a real confirmation, enforced by code, not by asking the model nicely.** When a delete is
+  requested, the bot asks "are you sure?" and stores exactly what would be deleted. The ACTUAL delete only
+  runs if the very next message is a clear "yes" - and runs directly against the same database function the
+  app's own delete button uses, without going back through the model. Any other reply cancels it. Every
+  write (and every refused/unauthorized message) is logged to `BotActionLog` for audit.
+
+What it deliberately can't do from chat: create or edit customers/suppliers, edit the product catalogue, or
+touch its own allowlist - those stay in the app UI, so a misread message can't quietly create bad contact
+records or let someone add themselves to the allowlist.
 
 ### Setup (Meta WhatsApp Cloud API)
 
@@ -112,35 +128,36 @@ built from), so two things matter more than usual here:
    User) **access token** into `WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_ACCESS_TOKEN`.
 3. Under App Settings → Basic, copy the **App Secret** into `WHATSAPP_APP_SECRET`.
 4. Pick any random string for `WHATSAPP_VERIFY_TOKEN` (you choose this, Meta just echoes it back once).
-5. Set `ANTHROPIC_API_KEY` (the bot calls Claude to parse the message) and `APP_URL` (your deployment's URL).
+5. Set `ANTHROPIC_API_KEY` (the assistant runs on Claude) and `APP_URL` (your deployment's URL, used to build
+   review links).
 6. Deploy, then in the Meta app's WhatsApp → Configuration, set the webhook URL to
    `https://<your-domain>/api/whatsapp/webhook`, the verify token to the value from step 4, and subscribe
    to the `messages` field.
 7. In this app, go to Settings and:
    - Add each staff phone number that may use the bot, in international format (e.g. `919876543210`).
    - Check the **Products** catalogue - it's seeded from a short starter list; add your real products so
-     the bot has something to match against.
-8. From a WhatsApp chat with the test number, send a requirement, e.g.:
-   ```
-   Customer: Rajan Enterprises
-   2 CP Plus dome cameras, 1 4 channel NVR
-   ```
-   The `Customer: ...` first line is optional - if it matches exactly one existing customer the quotation
-   is linked to them; otherwise it's created unlinked.
+     the bot has something to match against and quote correctly.
+8. Message the number and try it: ask it something ("what's open right now"), or give it a requirement
+   ("Customer: Rajan Enterprises, 2 CP Plus dome cameras, 1 4 channel NVR").
 
 ### Known limitations (v1)
 
-- The bot's WhatsApp reply is plain text with a review link, not a PDF - generating a PDF server-side in a
-  webhook needs a headless browser, which doesn't fit well in a serverless function. Staff download/send the
-  PDF from the app itself after reviewing.
-- The whole catalogue is sent to Claude on every message (`src/lib/whatsapp/catalog.ts`), so this doesn't
-  scale past a few hundred products without adding a retrieval/shortlisting step first.
-- Customer matching is a single `Customer: <name>` line, matched case-insensitively; there's no interactive
-  "did you mean X or Y" follow-up yet.
-- I could not test the Claude extraction or real WhatsApp delivery live while building this - there were no
-  API credentials in the environment. The webhook's signature verification, allowlist enforcement, logging,
-  and the outbound Meta Graph API request shape were all exercised against the real Graph API's auth check
-  (see the PR/commit this came from); only the actual parsing quality and message delivery are unverified.
+- Replies are plain text with a review link, not a PDF - generating a PDF server-side in a webhook needs a
+  headless browser, which doesn't fit well in a serverless function. Staff download/send the PDF from the
+  app itself after reviewing.
+- The whole product/service catalogue is sent to Claude on every message (`src/lib/whatsapp/catalog.ts`), so
+  this doesn't scale past a few hundred products without adding a retrieval/shortlisting step first.
+- Conversation history resets after 3 hours of inactivity and is trimmed to the most recent ~12 exchanges
+  (`src/lib/whatsapp/conversation.ts`) - there's no long-term memory across sessions.
+- Customer matching (by name, in a message) is case-insensitive partial matching; ambiguous or unknown names
+  are never guessed, but there's no interactive "did you mean X or Y" follow-up yet.
+- Creating/editing customers and suppliers, editing the catalogue, and managing the allowlist stay app-only
+  by design (see above) - not a gap, a boundary.
+- I could not test the Claude side or real WhatsApp delivery live while building this - there were no API
+  credentials in the environment. What I did verify: the full tool-calling loop and the confirmation flow
+  against real Postgres with the model stubbed (106 tests total), and the webhook's signature verification,
+  allowlist enforcement, logging and outbound Meta Graph API request shape against the real Graph API's auth
+  check. Not verified: the model's actual judgement in a live conversation, and real message delivery.
 
 ## Database migrations
 
@@ -162,6 +179,6 @@ Running `migrate deploy` on the existing database *before* baselining fails with
 
 - Customer PO PDFs: only the **file name** is stored; the file itself is not saved anywhere yet.
 - Money is stored as `Float` and rounded to 2 decimals at the server boundary.
-- One shared password, no per-user accounts or audit trail (the WhatsApp bot has its own separate audit
-  trail - `BotRequirementLog` - since staff identity there is a phone number, not a login).
-- See "WhatsApp bot" above for that feature's own v1 limitations.
+- One shared password, no per-user accounts or audit trail (the WhatsApp assistant has its own separate
+  audit trail - `BotActionLog` - since staff identity there is a phone number, not a login).
+- See "WhatsApp assistant" above for that feature's own v1 limitations.

@@ -14,12 +14,13 @@ import {
 import { baseRef } from "@/lib/refs"
 import { createSupplierPODraft } from "@/lib/spo-draft"
 import { createQuotationCore } from "@/lib/quotation-create"
+import { setQuotationStatusCore } from "@/lib/quotation-status-core"
+import { deleteQuotationCore } from "@/lib/delete-cores"
 import {
   CONVERTIBLE_QUOTATION_STATUSES,
   EDITABLE_QUOTATION_STATUSES,
   QUOTATION_STATUSES,
   REVISABLE_QUOTATION_STATUSES,
-  canTransitionQuotation,
 } from "@/lib/status"
 
 function revalidateQuotations(id?: string) {
@@ -104,13 +105,7 @@ export async function setQuotationStatus(id: string, status: string): Promise<Ac
     requiredId(id, "Quotation")
     const next = oneOf(status, QUOTATION_STATUSES, "Status")
 
-    const existing = await prisma.quotation.findUnique({ where: { id }, select: { status: true } })
-    if (!existing) throw new UserError("Quotation not found.")
-    if (!canTransitionQuotation(existing.status, next)) {
-      throw new UserError(`A quotation cannot move from "${existing.status}" to "${next}".`)
-    }
-
-    await prisma.quotation.update({ where: { id }, data: { status: next } })
+    await setQuotationStatusCore(id, next)
     revalidateQuotations(id)
   })
 }
@@ -207,20 +202,7 @@ export async function deleteQuotation(id: string): Promise<ActionResult> {
     await requireAuth()
     requiredId(id, "Quotation")
 
-    const [cpoCount, revisionCount] = await Promise.all([
-      prisma.customerPO.count({ where: { quotationId: id } }),
-      prisma.quotation.count({ where: { parentQuotationId: id } }),
-    ])
-    if (cpoCount > 0) {
-      throw new UserError(
-        `This quotation has ${cpoCount} customer PO${cpoCount > 1 ? "s" : ""} against it. Delete those first.`,
-      )
-    }
-    if (revisionCount > 0) {
-      throw new UserError("This quotation has later revisions. Delete the revisions first.")
-    }
-
-    await prisma.quotation.delete({ where: { id } })
+    await deleteQuotationCore(id)
     revalidateQuotations()
   })
 }

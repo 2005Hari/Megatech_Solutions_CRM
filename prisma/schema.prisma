@@ -79,29 +79,45 @@ model WhatsAppSender {
   createdAt   DateTime @default(now())
 }
 
-enum BotRequirementStatus {
-  RECEIVED
+/// One row per staff WhatsApp number: the running conversation with the
+/// agent, plus any destructive action waiting on a plain "yes" to confirm.
+/// Conversation history is reset after a period of inactivity, and trimmed
+/// to the most recent turns - see src/lib/whatsapp/conversation.ts.
+model BotConversation {
+  id          String   @id @default(uuid())
+  phoneNumber String   @unique
+  /// JSON array of Anthropic MessageParam-shaped turns (text and tool_use/tool_result blocks).
+  messages    String   @default("[]")
+  /// JSON: { tool, args, label } - set when a destructive tool call is
+  /// awaiting an explicit "yes" in the NEXT message. Cleared on any reply,
+  /// confirmed or not. Execution of the confirmed action does NOT go back
+  /// through the model - see src/lib/whatsapp/agent.ts.
+  pendingConfirmation String?
+  pendingExpiresAt    DateTime?
+  updatedAt           DateTime @updatedAt
+}
+
+enum BotActionStatus {
   IGNORED_UNAUTHORIZED
-  PARSED
-  QUOTATION_CREATED
+  OK
   FAILED
 }
 
-/// Audit trail for every inbound WhatsApp message the bot acted on (or
-/// refused to act on). There is no human review before a quotation is
-/// created, so this is how staff can see what the bot did and why.
-model BotRequirementLog {
-  id              String                @id @default(uuid())
-  fromPhone       String
-  rawMessage      String
-  status          BotRequirementStatus
-  customerHint    String? // "Customer: ..." line as parsed, before matching
-  matchedCustomerId String?
-  quotationId     String?
-  matchedCount    Int                   @default(0)
-  unmatchedItems  String? // JSON string array of unmatched line descriptions
-  errorMessage    String?
-  createdAt       DateTime              @default(now())
+/// Audit trail for every inbound WhatsApp message the agent acted on (or
+/// refused to act on), and every tool call it made answering it. There is
+/// no human review before a tool runs (destructive ones aside - see
+/// BotConversation.pendingConfirmation), so this is how staff can see what
+/// the bot did and why.
+model BotActionLog {
+  id           String          @id @default(uuid())
+  fromPhone    String
+  userMessage  String
+  status       BotActionStatus
+  /// JSON array of {name, input, resultSummary, isError} - one per tool call made answering this message.
+  toolCalls    String?
+  replyText    String?
+  errorMessage String?
+  createdAt    DateTime        @default(now())
 
   @@index([fromPhone])
   @@index([createdAt])
