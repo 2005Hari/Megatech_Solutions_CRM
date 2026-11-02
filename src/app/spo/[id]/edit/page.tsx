@@ -1,48 +1,40 @@
-import { prisma } from "@/lib/prisma"
+import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
+import { prisma } from "@/lib/prisma"
+import { EDITABLE_SPO_STATUSES } from "@/lib/status"
 import SPOEditForm from "./SPOEditForm"
+
+export const dynamic = "force-dynamic"
 
 export default async function SPOEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
   const spo = await prisma.supplierPO.findUnique({
     where: { id },
-    include: {
-      items: true,
-      supplier: true,
-      cpo: { include: { customer: true } }
-    }
+    include: { items: true, cpo: { include: { customer: true } } },
   })
+  if (!spo) notFound()
 
-  if (!spo) {
-    return (
-      <div className="p-8">
-        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl">
-          Supplier PO not found or has been deleted.
-        </div>
-        <div className="mt-4">
-          <Link href="/spo" className="text-sm text-blue-600 hover:underline">← Back to Supplier POs</Link>
-        </div>
-      </div>
-    )
-  }
+  // Once a PO has gone to the supplier its content is frozen.
+  if (!EDITABLE_SPO_STATUSES.includes(spo.status)) redirect(`/spo/${spo.id}`)
 
   const suppliers = await prisma.supplier.findMany({
-    orderBy: { name: "asc" }
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, contactDetails: true },
   })
 
   return (
     <div className="p-8">
       <div className="mb-6">
-        <Link href={`/spo/${spo.id}`} className="text-sm text-slate-500 hover:text-slate-900 transition-colors">
+        <Link href={`/spo/${spo.id}`} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
           ← Back to Supplier PO Details
         </Link>
       </div>
 
       <div className="flex justify-between items-start mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Edit Supplier PO</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Edit Supplier PO</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Modifying draft or reviewed details for <strong>{spo.refNo}</strong>
           </p>
         </div>

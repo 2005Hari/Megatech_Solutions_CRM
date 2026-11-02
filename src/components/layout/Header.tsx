@@ -1,6 +1,7 @@
 "use client";
 
-import { Bell, Search } from "lucide-react";
+import { Bell, LogOut, Search } from "lucide-react";
+import { logout } from "@/app/actions/auth";
 
 export default function Header() {
   return (
@@ -30,11 +31,15 @@ export default function Header() {
           
           <div className="hidden lg:block lg:h-4 lg:w-px lg:bg-sidebar-border" aria-hidden="true" />
           
-          <button className="flex items-center gap-x-2 text-sm font-medium leading-6 text-foreground hover:opacity-80 transition-opacity">
-            <div className="h-7 w-7 rounded-full bg-muted border border-sidebar-border flex items-center justify-center overflow-hidden">
-               <span className="text-xs font-semibold text-muted-foreground">AU</span>
-            </div>
-          </button>
+          <form action={logout}>
+            <button
+              type="submit"
+              className="flex items-center gap-x-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+              Sign out
+            </button>
+          </form>
         </div>
       </div>
     </header>

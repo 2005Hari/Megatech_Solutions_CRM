@@ -1,36 +1,104 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MegaTech OMS
 
-## Getting Started
+Order-management system for Megatech Solutions: quotations → customer POs → supplier POs, with margin tracking.
 
-First, run the development server:
+Built with Next.js 16 (App Router), React 19, Prisma 5 + PostgreSQL, Tailwind 4.
+
+> Next.js 16 has breaking changes versus older versions (e.g. `middleware` is now `proxy`). See `AGENTS.md`
+> and read `node_modules/next/dist/docs/` before changing framework-level code.
+
+## Getting started
 
 ```bash
+cp .env.example .env      # then fill it in
+npm install
+npx prisma db push        # create/update tables (dev)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+With `AUTH_PASSWORD` / `AUTH_SECRET` unset, sign-in is **off** in development. Set both to try the login locally.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable        | Purpose                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| `DATABASE_URL`  | Postgres connection used by the app.                                                      |
+| `DIRECT_URL`    | Direct connection used by the Prisma CLI (schema changes).                                |
+| `AUTH_PASSWORD` | Shared sign-in password.                                                                  |
+| `AUTH_SECRET`   | Signs the session cookie (≥ 16 chars). `openssl rand -base64 32`.                         |
 
-## Learn More
+**In production the app fails closed:** unless both `AUTH_*` variables are set, every page returns 503.
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Command                   | What it does                                              |
+| ------------------------- | --------------------------------------------------------- |
+| `npm run dev`             | Dev server.                                               |
+| `npm run build`           | `prisma generate`, `prisma db push`, `next build`.        |
+| `npm run lint`            | ESLint.                                                   |
+| `npm run typecheck`       | `tsc --noEmit`.                                           |
+| `npm test`                | Unit tests (and DB integration tests if configured).      |
+| `npm run db:migrate:deploy` | Apply committed migrations (see below).                 |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Tests
 
-## Deploy on Vercel
+Unit tests need nothing. The integration suite runs the server actions against a real database and is skipped
+unless you point it at a **scratch** database (it truncates tables):
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+TEST_DATABASE_URL=postgresql://postgres@localhost:5432/crm_test npx prisma db push   # once, with DATABASE_URL/DIRECT_URL set to the same URL
+TEST_DATABASE_URL=postgresql://postgres@localhost:5432/crm_test npm test
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## How the workflow fits together
+
+```
+Quotation (Draft → Sent → Customer Review / Negotiation → …)
+   │  "Upload CPO"  (Draft, Sent, Customer Review, Negotiation, or Won)
+   ▼
+Customer PO  ──creates──▶  Supplier PO draft (one per conversion, items unpriced)
+                              Draft → Ready For Review → Sent → (Partially) Received → Closed
+```
+
+- Statuses and the allowed moves between them live in **one file**: `src/lib/status.ts`.
+- A quotation is editable while `Draft` (or legacy `Pending`). After that, use **New Revision** (`… Rev-1`, `Rev-2`).
+- Converting to a customer PO is all-or-nothing: PO, supplier-PO draft and the `Won` status are written in one transaction.
+- A customer PO becomes `Fulfilled` only when **every** supplier PO raised for it has been received.
+- Profit figures only count orders whose costs are known (estimated costs recorded / every supplier item priced), so
+  missing prices never inflate profit. See `src/lib/finance.ts`.
+- Reference numbers (`MTS-2026-001`, `SPO-2026-0001`) come from a database counter (`src/lib/refs.ts`).
+
+### Where things live
+
+| Path                | Contents                                                                     |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `src/app/actions/`  | Server actions. Each one calls `requireAuth()`, validates input, returns `ActionResult`. |
+| `src/lib/`          | Pure logic (status rules, totals, finance, validation, refs, auth tokens).  |
+| `src/proxy.ts`      | Page-level sign-in gate (Next 16 replacement for `middleware`).             |
+| `tests/`            | `unit/` (pure logic) and `integration/` (real database).                     |
+
+Server actions return `{ ok: true, data } | { ok: false, error }` rather than throwing: Next.js hides thrown error
+messages in production, so users would only ever see a generic failure. Add new actions with `runAction()`.
+
+## Database migrations
+
+Production has so far been managed with `prisma db push` (that is what `npm run build` still runs). A proper
+Postgres baseline migration is committed in `prisma/migrations/`, so you can move to reviewable migrations.
+**One-time switch** for the existing production database (it already has the tables, so the baseline must be marked as applied, not run):
+
+```bash
+# with DATABASE_URL / DIRECT_URL pointing at production
+npm run db:baseline            # prisma migrate resolve --applied 20261102000000_baseline
+npm run db:migrate:deploy      # should report: No pending migrations
+```
+
+Then change the `build` script to `prisma generate && prisma migrate deploy && next build`, and make future schema
+changes with `npx prisma migrate dev --name what_changed` and commit the generated folder.
+Running `migrate deploy` on the existing database *before* baselining fails with `P3005` - that is expected and harmless.
+
+## Known limitations
+
+- Customer PO PDFs: only the **file name** is stored; the file itself is not saved anywhere yet.
+- The quotation product picker is a fixed starter list in `src/lib/catalog.ts` (there is no Product table).
+- Money is stored as `Float` and rounded to 2 decimals at the server boundary.
+- One shared password, no per-user accounts or audit trail.

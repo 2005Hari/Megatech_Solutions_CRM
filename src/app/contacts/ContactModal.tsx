@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createContact, updateContact } from "@/app/actions/contacts"
 import { X, Save } from "lucide-react"
+import { useFeedback } from "@/components/ui/Feedback"
 
 interface ContactModalProps {
   isOpen: boolean
@@ -18,20 +19,12 @@ interface ContactModalProps {
 
 export default function ContactModal({ isOpen, onClose, type, contact }: ContactModalProps) {
   const router = useRouter()
-  const [name, setName] = useState("")
-  const [contactDetails, setContactDetails] = useState("")
+  const { notify } = useFeedback()
+  // The parent remounts this component (via `key`) each time it is opened,
+  // so initial state is all that's needed to prefill edit mode.
+  const [name, setName] = useState(contact?.name ?? "")
+  const [contactDetails, setContactDetails] = useState(contact?.contactDetails ?? "")
   const [loading, setLoading] = useState(false)
-
-  // Prepopulate form if contact is provided (Edit Mode)
-  useEffect(() => {
-    if (contact) {
-      setName(contact.name)
-      setContactDetails(contact.contactDetails || "")
-    } else {
-      setName("")
-      setContactDetails("")
-    }
-  }, [contact, isOpen])
 
   if (!isOpen) return null
 
@@ -39,21 +32,17 @@ export default function ContactModal({ isOpen, onClose, type, contact }: Contact
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return alert("Name is required")
+    const label = type === "customer" ? "Customer" : "Supplier"
 
     setLoading(true)
     try {
-      if (isEdit && contact) {
-        await updateContact(type, contact.id, { name, contactDetails })
-        alert(`${type === "customer" ? "Customer" : "Supplier"} updated successfully!`)
-      } else {
-        await createContact(type, { name, contactDetails })
-        alert(`${type === "customer" ? "Customer" : "Supplier"} added successfully!`)
-      }
+      const res =
+        isEdit && contact
+          ? await updateContact(type, contact.id, { name, contactDetails })
+          : await createContact(type, { name, contactDetails })
+      if (!notify(res, `${label} ${isEdit ? "updated" : "added"}.`)) return
       onClose()
       router.refresh()
-    } catch (err: any) {
-      alert("Failed to save contact: " + err.message)
     } finally {
       setLoading(false)
     }

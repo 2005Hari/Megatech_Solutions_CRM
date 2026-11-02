@@ -19,6 +19,13 @@ enum ItemType {
   SERVICE
 }
 
+/// Per-key running counters used to allocate collision-free reference numbers
+/// (e.g. key "quotation-2026" -> MTS-2026-001). See src/lib/refs.ts.
+model Counter {
+  key   String @id
+  value Int    @default(0)
+}
+
 model Unit {
   id     String  @id @default(uuid())
   name   String  @unique
@@ -79,11 +86,16 @@ model Quotation {
   terms          String?         // JSON string array of terms
   customerId     String?
   customer       Customer?       @relation(fields: [customerId], references: [id])
+  customerAddress String?        // free-text "To" block printed on the document
   sections       QuotationSection[]
   items          QuotationItem[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   customerPOs    CustomerPO[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([parentQuotationId])
 }
 
 model QuotationItem {
@@ -131,6 +143,10 @@ model CustomerPO {
   supplierPOs SupplierPO[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+
+  @@index([status])
+  @@index([quotationId])
+  @@index([customerId])
 }
 
 model CustomerPOItem {
@@ -160,6 +176,10 @@ model SupplierPO {
   statusHistory StatusHistory[]
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
+
+  @@index([status])
+  @@index([cpoId])
+  @@index([supplierId])
 }
 
 model SupplierPOItem {
@@ -169,7 +189,7 @@ model SupplierPOItem {
   productName String
   qty         Int
   unit        String?
-  buyPrice    Float?     // Optional because initially it's a draft without commercials
+  buyPrice    Float?     // null = not priced yet (drafts have no commercials)
   cpoItemId   String?
   cpoItem     CustomerPOItem? @relation(fields: [cpoItemId], references: [id])
 }

@@ -7,6 +7,7 @@ import { Edit, Trash2, Calendar, DollarSign, Percent, Clock, FileText, ShoppingB
 import { formatCurrency, formatDate } from "@/lib/utils"
 import ContactModal from "../../ContactModal"
 import { deleteContact } from "@/app/actions/contacts"
+import { useFeedback } from "@/components/ui/Feedback"
 
 interface CustomerProfileClientProps {
   customer: {
@@ -46,6 +47,7 @@ export default function CustomerProfileClient({
   cpos
 }: CustomerProfileClientProps) {
   const router = useRouter()
+  const { confirm, notify } = useFeedback()
   const [isModalOpen, setIsModalOpen] = useState(false)
   
   const handleEdit = () => {
@@ -53,18 +55,18 @@ export default function CustomerProfileClient({
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Are you sure you want to delete customer "${customer.name}"?`)) {
-      return
-    }
+    const ok = await confirm({
+      title: `Delete customer "${customer.name}"?`,
+      message: "This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    })
+    if (!ok) return
 
-    try {
-      await deleteContact("customer", customer.id)
-      alert("Customer deleted successfully.")
-      router.push("/contacts")
-      router.refresh()
-    } catch (error: any) {
-      alert(error.message || "Failed to delete customer.")
-    }
+    const res = await deleteContact("customer", customer.id)
+    if (!notify(res, "Customer deleted.")) return
+    router.push("/contacts")
+    router.refresh()
   }
 
   return (

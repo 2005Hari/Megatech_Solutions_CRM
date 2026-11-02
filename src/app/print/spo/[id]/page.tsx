@@ -1,5 +1,12 @@
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { COMPANY } from "@/lib/company";
+import { isPriced, spoTotalCost } from "@/lib/finance";
+import { lineTotal } from "@/lib/totals";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import AutoPrint from "./AutoPrint";
+
+export const dynamic = "force-dynamic";
 
 export default async function SPOPrintPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -9,19 +16,13 @@ export default async function SPOPrintPage({ params }: { params: Promise<{ id: s
     include: { items: true, supplier: true, cpo: true }
   });
 
-  if (!spo) {
-    return (
-      <div className="p-8 text-center text-red-600 font-bold">
-        Supplier PO not found.
-      </div>
-    );
-  }
+  if (!spo) notFound();
 
-  const totalCost = spo.items.reduce((sum, item) => sum + (item.qty * (item.buyPrice || 0)), 0);
+  const totalCost = spoTotalCost(spo.items);
 
   return (
     <div className="bg-slate-100 min-h-screen py-8 print:py-0 print-wrapper">
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style>{`
         aside {
           display: none !important;
         }
@@ -48,14 +49,14 @@ export default async function SPOPrintPage({ params }: { params: Promise<{ id: s
             padding: 0 !important;
           }
         }
-      `}} />
+      `}</style>
       {/* Formal A4 styled page container */}
       <div className="bg-white mx-auto text-black p-0 overflow-hidden shadow-2xl print:shadow-none border border-slate-200 print:border-none print-container" style={{ width: "794px", fontFamily: "'Inter', sans-serif" }}>
         
         {/* Header */}
         <div className="text-center py-6 px-11 border-b-2 border-red-600">
-          <div className="font-serif text-[38px] font-black text-red-600 tracking-tight leading-none">Megatech Solutions</div>
-          <div className="text-xs text-gray-600 mt-1 font-medium">(Your Premier IT Partner)</div>
+          <div className="font-serif text-[38px] font-black text-red-600 tracking-tight leading-none">{COMPANY.name}</div>
+          <div className="text-xs text-gray-600 mt-1 font-medium">{COMPANY.tagline}</div>
         </div>
 
         <div className="py-5 px-11">
@@ -113,8 +114,8 @@ export default async function SPOPrintPage({ params }: { params: Promise<{ id: s
                   <td className="p-2.5 border-b border-gray-100 font-semibold text-gray-800">{it.productName}</td>
                   <td className="p-2.5 border-b border-gray-100 text-right">{it.qty}</td>
                   <td className="p-2.5 border-b border-gray-100 text-left">{it.unit || "nos"}</td>
-                  <td className="p-2.5 border-b border-gray-100 text-right">{it.buyPrice ? formatCurrency(it.buyPrice) : "Pending"}</td>
-                  <td className="p-2.5 border-b border-gray-100 text-right font-bold">{formatCurrency(it.qty * (it.buyPrice || 0))}</td>
+                  <td className="p-2.5 border-b border-gray-100 text-right">{isPriced(it.buyPrice) ? formatCurrency(it.buyPrice) : "Pending"}</td>
+                  <td className="p-2.5 border-b border-gray-100 text-right font-bold">{formatCurrency(lineTotal(it.qty, it.buyPrice ?? 0))}</td>
                 </tr>
               ))}
               {/* Filler lines to make it look professional */}
@@ -166,9 +167,9 @@ export default async function SPOPrintPage({ params }: { params: Promise<{ id: s
           {/* Signatures */}
           <div className="flex justify-between pt-4 border-t border-gray-200 text-[11px] leading-relaxed">
             <div>
-              <b className="text-red-600 text-[12px]">For Megatech Solutions</b><br/><br/>
+              <b className="text-red-600 text-[12px]">For {COMPANY.name}</b><br/><br/>
               <br/>_________________________<br/>
-              <b>Jatin Pachal</b><br/>Director<br/>
+              <b>{COMPANY.signatory.name}</b><br/>{COMPANY.signatory.title}<br/>
               <span className="text-gray-400 text-[10px]">Stamp & Signature</span>
             </div>
           </div>
@@ -176,14 +177,14 @@ export default async function SPOPrintPage({ params }: { params: Promise<{ id: s
 
         {/* Office Footer Address Block */}
         <div className="border-t-[1.5px] border-gray-300 p-2.5 px-11 text-center text-[9.5px] text-gray-500 leading-relaxed bg-gray-50 mt-4">
-          Regd. Office : 603, Shriram Complex, Near Nehru Statue, Sakri Road, Dhule 424 001. &nbsp;Tel. 02562-357620<br/>
-          Mumbai Office : 15, Raja House, M.K.Amin Marg, Behind Central Camera, Fort, Mumbai 400 001. &nbsp;Tel.: 022-22702211<br/>
-          email: jatin@megatechsolutions.co.in &nbsp;|&nbsp; Website: www.megatechsolutions.co.in &nbsp;|&nbsp; Cell: 9423191703, 9423191706
+          {COMPANY.offices.map(line => (
+            <div key={line}>{line}</div>
+          ))}
+          <div>{COMPANY.contactLine}</div>
         </div>
       </div>
 
-      {/* Auto-print script */}
-      <script dangerouslySetInnerHTML={{ __html: `window.onload = function() { window.print(); }` }} />
+      <AutoPrint />
     </div>
   );
 }

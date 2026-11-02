@@ -3,9 +3,10 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, Search, Edit2, Trash2, User, Landmark, Building2, MapPin } from "lucide-react"
+import { Plus, Search, Edit2, Trash2, User, Building2, MapPin } from "lucide-react"
 import ContactModal from "./ContactModal"
 import { deleteContact } from "@/app/actions/contacts"
+import { useFeedback } from "@/components/ui/Feedback"
 
 interface ContactsClientProps {
   customers: Array<{
@@ -31,11 +32,14 @@ interface ContactsClientProps {
 
 export default function ContactsClient({ customers, suppliers }: ContactsClientProps) {
   const router = useRouter()
+  const { confirm, notify } = useFeedback()
   const [activeTab, setActiveTab] = useState<"customers" | "suppliers">("customers")
   const [searchQuery, setSearchQuery] = useState("")
   
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
+  // Bumped on every open so the modal remounts with fresh form state.
+  const [modalKey, setModalKey] = useState(0)
   const [modalType, setModalType] = useState<"customer" | "supplier">("customer")
   const [selectedContact, setSelectedContact] = useState<{
     id: string
@@ -46,6 +50,7 @@ export default function ContactsClient({ customers, suppliers }: ContactsClientP
   const handleOpenAddModal = (type: "customer" | "supplier") => {
     setModalType(type)
     setSelectedContact(null)
+    setModalKey(k => k + 1)
     setIsModalOpen(true)
   }
 
@@ -55,21 +60,21 @@ export default function ContactsClient({ customers, suppliers }: ContactsClientP
   ) => {
     setModalType(type)
     setSelectedContact(contact)
+    setModalKey(k => k + 1)
     setIsModalOpen(true)
   }
 
   const handleDelete = async (type: "customer" | "supplier", id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete "${name}"?`)) {
-      return
-    }
+    const ok = await confirm({
+      title: `Delete "${name}"?`,
+      message: "This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    })
+    if (!ok) return
 
-    try {
-      await deleteContact(type, id)
-      alert(`${type === "customer" ? "Customer" : "Supplier"} deleted successfully.`)
-      router.refresh()
-    } catch (error: any) {
-      alert(error.message || "Failed to delete contact.")
-    }
+    const res = await deleteContact(type, id)
+    if (notify(res, `${type === "customer" ? "Customer" : "Supplier"} deleted.`)) router.refresh()
   }
 
   // Filters
@@ -314,6 +319,7 @@ export default function ContactsClient({ customers, suppliers }: ContactsClientP
 
       {/* Modal */}
       <ContactModal
+        key={modalKey}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         type={modalType}

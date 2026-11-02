@@ -7,6 +7,7 @@ import { Edit, Trash2, Calendar, DollarSign, Clock, Factory, ArrowLeft, MapPin }
 import { formatCurrency, formatDate } from "@/lib/utils"
 import ContactModal from "../../ContactModal"
 import { deleteContact } from "@/app/actions/contacts"
+import { useFeedback } from "@/components/ui/Feedback"
 
 interface SupplierProfileClientProps {
   supplier: {
@@ -37,6 +38,7 @@ export default function SupplierProfileClient({
   spos
 }: SupplierProfileClientProps) {
   const router = useRouter()
+  const { confirm, notify } = useFeedback()
   const [isModalOpen, setIsModalOpen] = useState(false)
   
   const handleEdit = () => {
@@ -44,18 +46,18 @@ export default function SupplierProfileClient({
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Are you sure you want to delete supplier "${supplier.name}"?`)) {
-      return
-    }
+    const ok = await confirm({
+      title: `Delete supplier "${supplier.name}"?`,
+      message: "This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    })
+    if (!ok) return
 
-    try {
-      await deleteContact("supplier", supplier.id)
-      alert("Supplier deleted successfully.")
-      router.push("/contacts")
-      router.refresh()
-    } catch (error: any) {
-      alert(error.message || "Failed to delete supplier.")
-    }
+    const res = await deleteContact("supplier", supplier.id)
+    if (!notify(res, "Supplier deleted.")) return
+    router.push("/contacts")
+    router.refresh()
   }
 
   return (

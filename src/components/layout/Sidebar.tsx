@@ -2,29 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Truck, 
-  FileText, 
-  ShoppingCart, 
+import {
+  LayoutDashboard,
+  Users,
+  FileText,
+  ShoppingCart,
   PackageOpen,
+  Calculator,
   Settings
 } from "lucide-react";
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn } from "@/lib/utils";
 
 const navigation = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
-  { name: "Customers", href: "/customers", icon: Users },
-  { name: "Suppliers", href: "/suppliers", icon: Truck },
+  { name: "Contacts", href: "/contacts", icon: Users },
   { name: "Quotations", href: "/quotations", icon: FileText },
   { name: "Customer Orders", href: "/cpo", icon: ShoppingCart },
   { name: "Supplier Orders", href: "/spo", icon: PackageOpen },
+  { name: "Margins", href: "/margins", icon: Calculator },
 ];
 
 export default function Sidebar() {

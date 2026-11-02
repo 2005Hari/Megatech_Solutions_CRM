@@ -18,7 +18,7 @@ async function main() {
   const customer1 = await prisma.customer.create({
     data: { name: 'Rajan Enterprises', contactDetails: 'contact@rajan.com' }
   })
-  const customer2 = await prisma.customer.create({
+  await prisma.customer.create({
     data: { name: 'Sharma Industries', contactDetails: 'info@sharma.com' }
   })
 

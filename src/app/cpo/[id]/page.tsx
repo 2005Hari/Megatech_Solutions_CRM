@@ -1,32 +1,41 @@
-import { prisma } from "@/lib/prisma";
-import { formatCurrency, formatDate } from "@/lib/utils";
-import Link from "next/link";
-import CpoTabs from "./tabs";
-import DeleteCPOButton from "../DeleteCPOButton";
+import { notFound } from "next/navigation"
+import Link from "next/link"
+import { prisma } from "@/lib/prisma"
+import { cpoFinance } from "@/lib/finance"
+import { formatCurrency } from "@/lib/utils"
+import { StatusBadge } from "@/components/ui/StatusBadge"
+import CpoTabs from "./tabs"
+import DeleteCPOButton from "../DeleteCPOButton"
+
+export const dynamic = "force-dynamic"
+
+function Kpi({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-card border border-card-border p-4 rounded-xl shadow-sm">
+      <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">{label}</div>
+      <div className="text-2xl font-bold">{children}</div>
+    </div>
+  )
+}
+
+const marginColor = (pct: number | null, good = 15, ok = 8) =>
+  pct === null ? "text-muted-foreground" : pct >= good ? "text-emerald-600" : pct >= ok ? "text-amber-600" : "text-rose-600"
 
 export default async function CustomerPODetails({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  const { id } = await params
 
   const cpo = await prisma.customerPO.findUnique({
     where: { id },
-    include: { 
-      items: true, 
-      customer: true, 
-      supplierPOs: { include: { items: true } } 
-    }
-  });
+    include: {
+      items: true,
+      customer: true,
+      quotation: { select: { id: true, refNo: true } },
+      supplierPOs: { include: { items: true }, orderBy: { date: "asc" } },
+    },
+  })
+  if (!cpo) notFound()
 
-  if (!cpo) return <div className="p-8">Customer PO not found</div>;
-
-  const spo = cpo.supplierPOs[0];
-  const totalRev = cpo.items.reduce((sum, item) => sum + (item.qty * item.sellPrice), 0);
-  const totalExpectedCost = cpo.items.reduce((sum, item) => sum + (item.qty * (item.estimatedCost || 0)), 0);
-  const totalCost = spo ? spo.items.reduce((sum, item) => sum + (item.qty * (item.buyPrice || 0)), 0) : 0;
-  
-  const expectedProfit = totalRev - totalExpectedCost;
-  const totalProfit = totalRev - totalCost;
-  const expectedMargin = totalRev > 0 ? (expectedProfit / totalRev) * 100 : 0;
-  const avgMargin = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
+  const fin = cpoFinance(cpo)
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-6">
@@ -35,50 +44,81 @@ export default async function CustomerPODetails({ params }: { params: Promise<{ 
           ← Back to Customer POs
         </Link>
       </div>
-      
+
       <div className="flex justify-between items-start mb-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{cpo.refNo}</h1>
-          <p className="text-muted-foreground mt-1 font-medium">{cpo.customer?.name || "Manual Entry"}</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{cpo.refNo}</h1>
+            <StatusBadge status={cpo.status} />
+          </div>
+          <p className="text-muted-foreground mt-1 font-medium">
+            {cpo.customer?.name || "Manual Entry"}
+            {cpo.quotation && (
+              <>
+                {" · from "}
+                <Link href={`/quotations/${cpo.quotation.id}`} className="text-accent hover:underline">
+                  {cpo.quotation.refNo}
+                </Link>
+              </>
+            )}
+          </p>
         </div>
         <div className="flex gap-3">
-          {spo && <Link href={`/spo/${spo.id}`} className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground border border-card-border rounded-lg text-sm font-semibold transition-colors">View Supplier PO</Link>}
-          <DeleteCPOButton cpoId={cpo.id} refNo={cpo.refNo} redirectTo="/cpo" className="px-4 py-2 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer" showText={true} />
+          {cpo.supplierPOs.map(spo => (
+            <Link
+              key={spo.id}
+              href={`/spo/${spo.id}`}
+              className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground border border-card-border rounded-lg text-sm font-semibold transition-colors"
+            >
+              Supplier PO {spo.refNo}
+            </Link>
+          ))}
+          <DeleteCPOButton
+            cpoId={cpo.id}
+            refNo={cpo.refNo}
+            redirectTo="/cpo"
+            className="px-4 py-2 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors"
+            showText
+          />
         </div>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-5 gap-4 mb-8">
-        <div className="bg-card border border-card-border p-4 rounded-xl shadow-sm">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Revenue</div>
-          <div className="text-2xl font-bold text-foreground">{formatCurrency(totalRev)}</div>
-        </div>
-        <div className="bg-card border border-card-border p-4 rounded-xl shadow-sm">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Expected Profit</div>
-          <div className={`text-2xl font-bold ${expectedProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-            {formatCurrency(expectedProfit)}
-            <span className="text-xs font-normal text-muted-foreground ml-2">({expectedMargin.toFixed(1)}%)</span>
-          </div>
-        </div>
-        <div className="bg-card border border-card-border p-4 rounded-xl shadow-sm">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Actual Cost</div>
-          <div className="text-2xl font-bold text-foreground">{spo ? formatCurrency(totalCost) : 'Pending SPO'}</div>
-        </div>
-        <div className="bg-card border border-card-border p-4 rounded-xl shadow-sm">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Actual Profit</div>
-          <div className={`text-2xl font-bold ${totalProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-            {spo ? formatCurrency(totalProfit) : '—'}
-          </div>
-        </div>
-        <div className="bg-card border border-card-border p-4 rounded-xl shadow-sm">
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Actual Margin %</div>
-          <div className={`text-2xl font-bold ${avgMargin >= 15 ? 'text-emerald-500' : avgMargin >= 8 ? 'text-amber-500' : 'text-rose-500'}`}>
-            {spo ? `${avgMargin.toFixed(1)}%` : '—'}
-          </div>
-        </div>
+        <Kpi label="Revenue">{formatCurrency(fin.revenue)}</Kpi>
+        <Kpi label="Expected Profit">
+          {fin.expectedProfit === null ? (
+            <span className="text-muted-foreground text-base font-semibold">No estimates</span>
+          ) : (
+            <span className={fin.expectedProfit >= 0 ? "text-emerald-600" : "text-rose-600"}>
+              {formatCurrency(fin.expectedProfit)}
+              <span className="text-xs font-normal text-muted-foreground ml-2">({fin.expectedMarginPct?.toFixed(1)}%)</span>
+            </span>
+          )}
+        </Kpi>
+        <Kpi label="Actual Cost">
+          {fin.actualCost !== null ? (
+            formatCurrency(fin.actualCost)
+          ) : (
+            <span className="text-muted-foreground text-base font-semibold">
+              {fin.spoCount === 0 ? "Pending SPO" : "Awaiting prices"}
+            </span>
+          )}
+        </Kpi>
+        <Kpi label="Actual Profit">
+          {fin.actualProfit !== null ? (
+            <span className={fin.actualProfit >= 0 ? "text-emerald-600" : "text-rose-600"}>{formatCurrency(fin.actualProfit)}</span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </Kpi>
+        <Kpi label="Actual Margin %">
+          <span className={marginColor(fin.actualMarginPct)}>
+            {fin.actualMarginPct !== null ? `${fin.actualMarginPct.toFixed(1)}%` : "—"}
+          </span>
+        </Kpi>
       </div>
 
-      <CpoTabs cpo={cpo} spo={spo} totalRev={totalRev} />
+      <CpoTabs cpo={cpo} spos={cpo.supplierPOs} totalRev={fin.revenue} />
     </div>
-  );
+  )
 }
